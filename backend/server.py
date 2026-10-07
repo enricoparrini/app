@@ -292,11 +292,18 @@ class BlockIn(BaseModel):
     year: int
 
 
+class CloseAttachmentIn(BaseModel):
+    name: str
+    mime: str
+    data: str  # base64
+
+
 class CloseBlockIn(BaseModel):
     bonifico_date: str
     bonifico_amount: float
     bonifico_direction: str  # "parent1_to_parent2" | "parent2_to_parent1" | "none"
     bonifico_note: Optional[str] = None
+    attachments: Optional[List[CloseAttachmentIn]] = None
 
 
 # ---------------------------- Auth ----------------------------
@@ -716,10 +723,19 @@ def _build_zip(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[str, Any])
                         ext = "." + e["attachment_mime"].split("/")[-1]
                     elif e.get("attachment_mime") == "application/pdf":
                         ext = ".pdf"
-                    filename = f"allegati/{i:02d}_{_safe_filename(e.get('description','spesa'))}{ext}"
+                    filename = f"spese/{i:02d}_{_safe_filename(e.get('description','spesa'))}{ext}"
                     zf.writestr(filename, raw)
                 except Exception as ex:
                     logger.warning(f"attach skip: {ex}")
+        for i, a in enumerate(blk.get("closure_attachments", []), 1):
+            if a.get("data"):
+                try:
+                    raw = base64.b64decode(a["data"])
+                    name = a.get("name") or f"allegato_{i}"
+                    filename = f"chiusura/{i:02d}_{_safe_filename(name)}"
+                    zf.writestr(filename, raw)
+                except Exception as ex:
+                    logger.warning(f"closure attach skip: {ex}")
     buf.seek(0)
     return buf.read()
 
@@ -787,8 +803,22 @@ async def close_block(
         raise HTTPException(status_code=400, detail="Blocco già chiuso")
 
     totals = _compute_totals(blk.get("expenses", []), cfg.get("default_pct_parent1", 50.0))
-    bonifico = payload.dict()
+    bonifico_dict = payload.dict()
+    closure_attachments_raw = bonifico_dict.pop("attachments", None) or []
+    # Valida allegati di chiusura (stessi vincoli delle spese)
+    closure_attachments: List[Dict[str, Any]] = []
+    for a in closure_attachments_raw:
+        _validate_attachment(a.get("data"), a.get("mime"))
+        closure_attachments.append(
+            {
+                "name": (a.get("name") or "allegato")[:120],
+                "mime": a.get("mime"),
+                "data": a.get("data"),
+            }
+        )
+    bonifico = bonifico_dict
     blk["bonifico"] = bonifico
+    blk["closure_attachments"] = closure_attachments
 
     zip_bytes = _build_zip(cfg, blk, totals)
     zip_b64 = base64.b64encode(zip_bytes).decode("ascii")
@@ -818,6 +848,7 @@ async def close_block(
         "status": "closed",
         "closed_at": datetime.now(timezone.utc),
         "bonifico": bonifico,
+        "closure_attachments": closure_attachments,
         "last_download_url": download_url,
     }
     if email_res["ok"]:

@@ -14,10 +14,17 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, Send } from "lucide-react-native";
+import { ChevronLeft, Camera, Image as ImageIcon, Paperclip, Send, X } from "lucide-react-native";
 import { api } from "@/src/api/client";
 import { colors } from "@/src/theme";
 import { formatMoney, todayIso } from "@/src/utils/format";
+import {
+  Attachment,
+  pickImageFromCamera,
+  pickImageFromGallery,
+  pickPdfDocument,
+} from "@/src/utils/attachments";
+import { Image } from "react-native";
 
 export default function CloseBlock() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -34,6 +41,15 @@ export default function CloseBlock() {
   const [date, setDate] = useState(todayIso());
   const [amount, setAmount] = useState("");
   const [note, setNote] = useState("");
+  const [attachments, setAttachments] = useState<Attachment[]>([]);
+
+  const addAttachment = (a: Attachment | null) => {
+    if (!a) return;
+    setAttachments((prev) => [...prev, a]);
+  };
+  const removeAttachment = (idx: number) => {
+    setAttachments((prev) => prev.filter((_, i) => i !== idx));
+  };
 
   useEffect(() => {
     (async () => {
@@ -79,6 +95,11 @@ export default function CloseBlock() {
         bonifico_amount: bonAmount,
         bonifico_direction: direction,
         bonifico_note: note.trim() || null,
+        attachments: attachments.map((a) => ({
+          name: a.name,
+          mime: a.mime,
+          data: a.data,
+        })),
       });
       qc.invalidateQueries({ queryKey: ["blocks"] });
       qc.invalidateQueries({ queryKey: ["block", id] });
@@ -169,6 +190,72 @@ export default function CloseBlock() {
             </Text>
           </View>
         )}
+
+        <Text style={styles.sectionTitle}>Allegati di chiusura (opzionale)</Text>
+        <Text style={{ color: colors.muted, fontSize: 12 }}>
+          Foto, scontrini o PDF da includere nel riepilogo inviato via email.
+        </Text>
+
+        {attachments.length > 0 && (
+          <View style={{ gap: 8 }}>
+            {attachments.map((a, idx) => (
+              <View
+                key={`${a.name}-${idx}`}
+                style={styles.attachmentCard}
+                testID={`closure-attachment-${idx}`}
+              >
+                {a.preview ? (
+                  <Image source={{ uri: a.preview }} style={styles.thumb} />
+                ) : (
+                  <View style={styles.thumbPdf}>
+                    <Paperclip color={colors.onSurface} size={20} />
+                    <Text style={{ fontSize: 10, color: colors.muted, marginTop: 2 }}>
+                      PDF
+                    </Text>
+                  </View>
+                )}
+                <Text style={styles.attachName} numberOfLines={2}>
+                  {a.name}
+                </Text>
+                <Pressable
+                  testID={`remove-closure-${idx}`}
+                  onPress={() => removeAttachment(idx)}
+                  hitSlop={6}
+                  style={styles.removeBtn}
+                >
+                  <X color={colors.error} size={16} />
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+
+        <View style={styles.attachRow}>
+          <Pressable
+            testID="closure-attach-camera"
+            onPress={async () => addAttachment(await pickImageFromCamera())}
+            style={styles.attachBtn}
+          >
+            <Camera color={colors.brandPrimary} size={16} />
+            <Text style={styles.attachBtnText}>Foto</Text>
+          </Pressable>
+          <Pressable
+            testID="closure-attach-gallery"
+            onPress={async () => addAttachment(await pickImageFromGallery())}
+            style={styles.attachBtn}
+          >
+            <ImageIcon color={colors.brandPrimary} size={16} />
+            <Text style={styles.attachBtnText}>Galleria</Text>
+          </Pressable>
+          <Pressable
+            testID="closure-attach-pdf"
+            onPress={async () => addAttachment(await pickPdfDocument())}
+            style={styles.attachBtn}
+          >
+            <Paperclip color={colors.brandPrimary} size={16} />
+            <Text style={styles.attachBtnText}>PDF</Text>
+          </Pressable>
+        </View>
 
         {err && <Text style={styles.err}>{err}</Text>}
       </ScrollView>
@@ -294,4 +381,47 @@ const styles = StyleSheet.create({
   },
   btnText: { color: colors.onBrandPrimary, fontSize: 15, fontWeight: "600" },
   err: { color: colors.error, marginTop: 8 },
+  attachRow: { flexDirection: "row", gap: 8 },
+  attachBtn: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 12,
+    borderRadius: 12,
+    backgroundColor: colors.brandTertiary,
+    borderWidth: 1,
+    borderColor: colors.brandSecondary,
+    borderStyle: "dashed",
+  },
+  attachBtnText: { color: colors.brandPrimary, fontWeight: "600", fontSize: 13 },
+  attachmentCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    padding: 10,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: 12,
+  },
+  thumb: { width: 44, height: 44, borderRadius: 8, backgroundColor: colors.surfaceTertiary },
+  thumbPdf: {
+    width: 44,
+    height: 44,
+    borderRadius: 8,
+    backgroundColor: colors.surfaceTertiary,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  attachName: { color: colors.onSurface, flex: 1, fontSize: 13, fontWeight: "500" },
+  removeBtn: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: colors.surfaceTertiary,
+  },
 });

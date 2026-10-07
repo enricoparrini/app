@@ -12,6 +12,7 @@
       "bundleIdentifier": "com.emergent.coparentexpenses.hn6oin",
       "infoPlist": {
         "NSPhotoLibraryUsageDescription": "Allega scontrini alle tue spese",
+        "NSCameraUsageDescription": "Scatta foto di scontrini e ricevute",
         "NSDocumentsFolderUsageDescription": "Allega ricevute PDF alle tue spese"
       }
     },
@@ -21,10 +22,7 @@
         "backgroundColor": "#FDFBF7"
       },
       "package": "com.emergent.coparentexpenses.hn6oin",
-      "permissions": [
-        "READ_EXTERNAL_STORAGE",
-        "SCHEDULE_EXACT_ALARM"
-      ]
+      "permissions": ["CAMERA", "READ_EXTERNAL_STORAGE", "SCHEDULE_EXACT_ALARM"]
     },
     "web": {
       "bundler": "metro",
@@ -51,11 +49,11 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allega scontrini alle tue spese"
+          "photosPermission": "Allega scontrini alle tue spese",
+          "cameraPermission": "Scatta foto di scontrini e ricevute"
         }
       ],
-      "expo-document-picker",
-      "expo-sharing"
+      "expo-document-picker"
     ],
     "experiments": {
       "typedRoutes": true

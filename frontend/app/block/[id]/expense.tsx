@@ -14,11 +14,12 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, Paperclip, Pencil, X } from "lucide-react-native";
-import * as ImagePicker from "expo-image-picker";
-import * as DocumentPicker from "expo-document-picker";
-import * as ImageManipulator from "expo-image-manipulator";
-import * as FileSystem from "expo-file-system/legacy";
+import { ChevronLeft, Camera, Image as ImageIcon, Paperclip, Pencil, X } from "lucide-react-native";
+import {
+  pickImageFromCamera,
+  pickImageFromGallery,
+  pickPdfDocument,
+} from "@/src/utils/attachments";
 import { api } from "@/src/api/client";
 import { colors } from "@/src/theme";
 import { todayIso } from "@/src/utils/format";
@@ -77,33 +78,29 @@ export default function ExpenseForm() {
   }, [id, eid]);
 
   const pickImage = async () => {
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!perm.granted) return;
-    const res = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ["images"],
-      quality: 0.6,
-    });
-    if (res.canceled) return;
-    const asset = res.assets[0];
-    const manipulated = await ImageManipulator.manipulateAsync(
-      asset.uri,
-      [{ resize: { width: 1200 } }],
-      { compress: 0.5, format: ImageManipulator.SaveFormat.JPEG, base64: true }
-    );
-    setAttData(manipulated.base64 || null);
-    setAttMime("image/jpeg");
-    setAttName(`scontrino_${Date.now()}.jpg`);
-    setAttPreview(`data:image/jpeg;base64,${manipulated.base64}`);
+    const a = await pickImageFromGallery();
+    if (!a) return;
+    setAttData(a.data);
+    setAttMime(a.mime);
+    setAttName(a.name);
+    setAttPreview(a.preview);
+  };
+
+  const takePhoto = async () => {
+    const a = await pickImageFromCamera();
+    if (!a) return;
+    setAttData(a.data);
+    setAttMime(a.mime);
+    setAttName(a.name);
+    setAttPreview(a.preview);
   };
 
   const pickDocument = async () => {
-    const res = await DocumentPicker.getDocumentAsync({ type: "application/pdf", copyToCacheDirectory: true });
-    if (res.canceled) return;
-    const file = res.assets[0];
-    const b64 = await FileSystem.readAsStringAsync(file.uri, { encoding: FileSystem.EncodingType.Base64 });
-    setAttData(b64);
-    setAttMime("application/pdf");
-    setAttName(file.name || "allegato.pdf");
+    const a = await pickPdfDocument();
+    if (!a) return;
+    setAttData(a.data);
+    setAttMime(a.mime);
+    setAttName(a.name);
     setAttPreview(null);
   };
 
@@ -258,9 +255,13 @@ export default function ExpenseForm() {
           </View>
         ) : (
           <View style={styles.attachRow}>
+            <Pressable testID="attach-camera" onPress={takePhoto} style={styles.attachBtn}>
+              <Camera color={colors.brandPrimary} size={16} />
+              <Text style={styles.attachBtnText}>Foto</Text>
+            </Pressable>
             <Pressable testID="attach-image" onPress={pickImage} style={styles.attachBtn}>
-              <Paperclip color={colors.brandPrimary} size={16} />
-              <Text style={styles.attachBtnText}>Immagine</Text>
+              <ImageIcon color={colors.brandPrimary} size={16} />
+              <Text style={styles.attachBtnText}>Galleria</Text>
             </Pressable>
             <Pressable testID="attach-pdf" onPress={pickDocument} style={styles.attachBtn}>
               <Paperclip color={colors.brandPrimary} size={16} />

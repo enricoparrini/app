@@ -1,0 +1,49 @@
+{
+  "summary": "Backend-only verification of the NEW closure_attachments feature on POST /api/blocks/{id}/close. Created /app/backend/tests/test_closure_attachments.py with 11 tests across 4 classes — all PASSED. Covered: (1) close with 2 attachments (PNG + fake PDF) → block closed, download_url returned, Mongo saves closure_attachments as [{name,mime,data},...], ZIP contains chiusura/ folder with the files; (2) SEC-002 on closure: mime=text/plain → 400 'Tipo di allegato non supportato', 4.5MB base64 (~3.37MB decoded) → 413 'Allegato troppo grande', block remains OPEN in both cases; (3) retrocompat: close without 'attachments' field still works, closure_attachments=[], ZIP has no chiusura/; (4) regression: health, auth_me, config, blocks list (no _id leak), expense SEC-002 (text/plain → 400), resend-email on closed block, export/year PDF. Full regression run of all 4 suites: 70 passed / 2 failed. The 2 failures are PRE-EXISTING environmental issues in test_security_fixes.py (Resend proxy rejects sec1@quota.local as undeliverable → 502) — documented in iteration_6.json — NOT related to this feature. Verified via downloaded ZIP: PK magic bytes, zipfile.ZipFile().namelist() shows 'report.html' + 'chiusura/01_ricevuta.png' + 'chiusura/02_contratto.pdf'; PDF binary content preserved byte-for-byte after base64 roundtrip.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/export/year/{year}/email",
+        "issue": "PRE-EXISTING (unrelated to closure_attachments feature): tests test_security_fixes.py::TestRateLimitExportEmail::test_export_email_rate_limit and TestRateLimitIsolation::test_user2_not_affected_by_user1_quota fail with 502 because the Resend proxy rejects test email 'sec1@quota.local' as undeliverable. Fix: patch user email to 'delivered@resend.dev' in test_security_fixes.py. Already noted in iteration_6.json."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_closure_attachments.py",
+    "/app/test_reports/pytest/closure_attachments.xml",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "No fix required for closure_attachments — all 11 new tests pass and all 6 feature-under-test items from the review request are verified.",
+    "Housekeeping (optional, pre-existing): patch test_security_fixes.py to use parent1_email='delivered@resend.dev' for TestRateLimitExportEmail and TestRateLimitIsolation (same recommendation as iteration_6.json)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:807 — closure_attachments_raw = bonifico_dict.pop('attachments', None) or [] correctly removes 'attachments' from the bonifico persisted dict and defaults to [] when field is omitted (full retrocompat).",
+    "server.py:810-818 — closure attachments go through the SAME _validate_attachment() used by expenses, ensuring MIME whitelist (image/* + application/pdf) and 3MB decoded size cap. Name is truncated to 120 chars (good — prevents abuse).",
+    "server.py:821 — blk['closure_attachments'] = closure_attachments is set BEFORE _build_zip(cfg, blk, totals), so the ZIP builder sees the attachments. Correct ordering.",
+    "server.py:730-738 — _build_zip iterates blk.get('closure_attachments', []) and writes to 'chiusura/{i:02d}_{safe_name}'. Uses _safe_filename on the display name — guards against path traversal / header injection.",
+    "server.py:847-863 — $set includes closure_attachments: so the full base64 payload is persisted in Mongo per block. Minor concern: with max 24 blocks and up to several MB per closure (not currently enforced to a per-request total), the block document could grow large; MongoDB document limit is 16MB so this is bounded by _validate_attachment (3MB each) and practical limits. Non-blocking.",
+    "server.py:295-306 — CloseAttachmentIn Pydantic model with name/mime/data all required strings. CloseBlockIn.attachments is Optional[List[CloseAttachmentIn]]. Correct.",
+    "No MongoDB _id leaks: all find_one calls use projection {'_id': 0}; block_id vs _id distinction verified.",
+    "Error path: when SEC-002 violation on closure attachment is raised (400/413), the block state is NOT modified (status remains 'open'). Verified via GET after failed close.",
+    "Minor UX: there is no per-request total size cap on closure attachments (user could theoretically send e.g. 10 files × 3MB each = 30MB request body). Each file is independently validated, but the aggregate is not. Not a security issue (rate limit=10/hour on close), but main agent may want to add a cap for memory safety."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_closure_attachments.py (new — 11 tests, 4 classes)"
+  ],
+  "success_rate": {
+    "backend": "100% on new closure_attachments suite (11/11). 97% on full regression (70/72 passing; 2 pre-existing env failures in test_security_fixes.py unrelated to this feature).",
+    "frontend": "not tested (backend-only request per review_request.testing_type)"
+  },
+  "seed_data_creation": "test_closure_attachments.py seeds user_closure_att + session test_closure_att_token + config with parent2_email='delivered@resend.dev' idempotently per module. Teardown wipes users, user_sessions, configs, blocks, email_downloads, email_rate_log for this user_id and email. Post-run manual cleanup verified: 0 docs remain for user_closure_att across all collections.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "BASE_URL from frontend/.env EXPO_PUBLIC_BACKEND_URL. Run new suite serially: pytest tests/test_closure_attachments.py -n 0 (xdist with 2 workers causes DuplicateKeyError on module-scope seed since both workers insert the same user email — all suites in this project should use -n 0 or make seed idempotent via upsert). Verified: ZIP structure is /report.html, /spese/NN_desc.ext (when expenses have attachments), /chiusura/NN_name.ext (when closure attachments present). File contents are preserved byte-for-byte through base64 encode→Mongo→decode→ZIP. SEC-002 validation (_validate_attachment) is shared between POST /blocks/{id}/expenses attachment_data/attachment_mime fields AND POST /blocks/{id}/close attachments[].{data,mime} — single source of truth. All 6 review-request feature points verified."
+}
