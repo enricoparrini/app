@@ -39,6 +39,68 @@ MONTH_NAMES_IT = [
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# ---------------------------- Security limits ----------------------------
+MAX_ATTACHMENT_BYTES = 3 * 1024 * 1024  # 3 MB decoded
+ALLOWED_ATTACHMENT_MIME = {
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "image/heic",
+    "image/heif",
+    "application/pdf",
+}
+
+# Rate limits per user per action (count, window_seconds)
+RATE_LIMITS = {
+    "close": (10, 60 * 60),           # max 10 chiusure email/ora
+    "resend": (5, 60 * 60),           # max 5 reinvii email/ora
+    "export_email": (5, 24 * 60 * 60),  # max 5 export annuali via email/giorno
+}
+
+
+async def _check_rate_limit(user_id: str, action: str) -> None:
+    """Rate limit sliding-window su MongoDB. Solleva 429 se superato."""
+    cfg = RATE_LIMITS.get(action)
+    if not cfg:
+        return
+    max_count, window_s = cfg
+    now = datetime.now(timezone.utc)
+    since = now - timedelta(seconds=window_s)
+    count = await db.email_rate_log.count_documents(
+        {"user_id": user_id, "action": action, "ts": {"$gte": since}}
+    )
+    if count >= max_count:
+        raise HTTPException(
+            status_code=429,
+            detail=f"Troppi invii. Riprova più tardi (massimo {max_count} ogni {window_s // 60} minuti).",
+        )
+    await db.email_rate_log.insert_one(
+        {"user_id": user_id, "action": action, "ts": now}
+    )
+
+
+def _validate_attachment(data: Optional[str], mime: Optional[str]) -> None:
+    """Valida dimensione e tipo MIME di un allegato (base64)."""
+    if not data:
+        return
+    if not mime or mime.lower() not in ALLOWED_ATTACHMENT_MIME:
+        raise HTTPException(
+            status_code=400,
+            detail="Tipo di allegato non supportato (ammessi: immagini e PDF)",
+        )
+    try:
+        # Calcolo dimensione senza decodificare tutto il blob in memoria
+        clean = data.rstrip("=")
+        decoded_bytes = (len(clean) * 3) // 4
+    except Exception:
+        raise HTTPException(status_code=400, detail="Allegato non valido")
+    if decoded_bytes > MAX_ATTACHMENT_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Allegato troppo grande (max {MAX_ATTACHMENT_BYTES // (1024 * 1024)} MB)",
+        )
+
 app = FastAPI()
 api = APIRouter(prefix="/api")
 
@@ -453,6 +515,7 @@ async def add_expense(block_id: str, payload: ExpenseIn, user=Depends(get_curren
         raise HTTPException(status_code=400, detail="Le percentuali devono sommare a 100%")
     if payload.paid_by not in ("parent1", "parent2"):
         raise HTTPException(status_code=400, detail="paid_by non valido")
+    _validate_attachment(payload.attachment_data, payload.attachment_mime)
     expense = payload.dict()
     expense["expense_id"] = f"exp_{uuid.uuid4().hex[:12]}"
     expense["created_at"] = datetime.now(timezone.utc).isoformat()
@@ -473,6 +536,7 @@ async def update_expense(
     _ = await _get_open_block(user["user_id"], block_id)
     if abs((payload.pct_parent1 + payload.pct_parent2) - 100.0) > 0.1:
         raise HTTPException(status_code=400, detail="Le percentuali devono sommare a 100%")
+    _validate_attachment(payload.attachment_data, payload.attachment_mime)
     update_fields = {f"expenses.$.{k}": v for k, v in payload.dict().items()}
     res = await db.blocks.update_one(
         {
@@ -632,6 +696,7 @@ def _email_body(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[str, Any]
 
 @api.post("/blocks/{block_id}/close")
 async def close_block(block_id: str, payload: CloseBlockIn, user=Depends(get_current_user)):
+    await _check_rate_limit(user["user_id"], "close")
     cfg = await db.configs.find_one({"user_id": user["user_id"]}, {"_id": 0})
     if not cfg:
         raise HTTPException(status_code=400, detail="Configurazione mancante")
@@ -685,6 +750,7 @@ async def close_block(block_id: str, payload: CloseBlockIn, user=Depends(get_cur
 
 @api.post("/blocks/{block_id}/resend-email")
 async def resend_email_block(block_id: str, user=Depends(get_current_user)):
+    await _check_rate_limit(user["user_id"], "resend")
     cfg = await db.configs.find_one({"user_id": user["user_id"]}, {"_id": 0})
     if not cfg:
         raise HTTPException(status_code=400, detail="Configurazione mancante")
@@ -875,6 +941,7 @@ async def export_year_pdf(year: int, user=Depends(get_current_user)):
 @api.post("/export/year/{year}/email")
 async def email_year_pdf(year: int, user=Depends(get_current_user)):
     """Invia il PDF annuale via email al genitore 1."""
+    await _check_rate_limit(user["user_id"], "export_email")
     cfg = await db.configs.find_one({"user_id": user["user_id"]}, {"_id": 0})
     if not cfg:
         raise HTTPException(status_code=400, detail="Configurazione mancante")
@@ -912,6 +979,8 @@ async def startup():
     await db.user_sessions.create_index("user_id")
     await db.user_sessions.create_index("expires_at", expireAfterSeconds=0)
     await db.blocks.create_index([("user_id", 1), ("year", -1), ("month", -1)])
+    await db.email_rate_log.create_index("ts", expireAfterSeconds=60 * 60 * 24 * 2)
+    await db.email_rate_log.create_index([("user_id", 1), ("action", 1), ("ts", -1)])
 
 
 @app.on_event("shutdown")

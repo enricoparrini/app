@@ -1,0 +1,421 @@
+<?xml version="1.0" encoding="utf-8"?><testsuites name="pytest tests"><testsuite name="pytest" errors="10" failures="0" skipped="0" tests="20" time="10.442" timestamp="2026-10-07T15:15:33.614927+00:00" hostname="agent-env-b2271663-8c0f-474b-b359-52a4994ce672"><testcase classname="tests.test_security_fixes.TestAttachmentMimeValidation" name="test_invalid_mime_rejected[text/plain]" time="0.140" /><testcase classname="tests.test_security_fixes.TestRegressionBasics" name="test_auth_me" time="0.017"><error message="failed on setup with &quot;pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}&quot;">backend/tests/test_security_fixes.py:139: in setup_module
+    _run(_seed_user(USER2_ID, USER2_EMAIL, USER2_TOKEN))
+backend/tests/test_security_fixes.py:47: in _run
+    return asyncio.get_event_loop().run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+backend/tests/test_security_fixes.py:66: in _seed_user
+    await db.users.update_one(
+/usr/local/lib/python3.11/concurrent/futures/thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:1086: in update_one
+    self._update_retryable(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:881: in _update_retryable
+    return self.__database.client._retryable_write(
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1523: in _retryable_write
+    return self._retry_with_session(retryable, func, s, bulk)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1421: in _retry_with_session
+    return self._retry_internal(
+/root/.venv/lib/python3.11/site-packages/pymongo/_csot.py:107: in csot_wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1462: in _retry_internal
+    ).run()
+      ^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2315: in run
+    return self._read() if self._is_read else self._write()
+                                              ^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2423: in _write
+    return self._func(self._session, conn, self._retryable)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:862: in _update
+    return self._update(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:825: in _update
+    _check_write_command_response(result)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:266: in _check_write_command_response
+    _raise_last_write_error(write_errors)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:238: in _raise_last_write_error
+    raise DuplicateKeyError(error.get("errmsg"), 11000, error)
+E   pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}</error></testcase><testcase classname="tests.test_security_fixes.TestAttachmentMimeValidation" name="test_invalid_mime_rejected[application/x-sh]" time="0.106" /><testcase classname="tests.test_security_fixes.TestRegressionBasics" name="test_get_config" time="0.000"><error message="failed on setup with &quot;pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}&quot;">backend/tests/test_security_fixes.py:139: in setup_module
+    _run(_seed_user(USER2_ID, USER2_EMAIL, USER2_TOKEN))
+backend/tests/test_security_fixes.py:47: in _run
+    return asyncio.get_event_loop().run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+backend/tests/test_security_fixes.py:66: in _seed_user
+    await db.users.update_one(
+/usr/local/lib/python3.11/concurrent/futures/thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:1086: in update_one
+    self._update_retryable(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:881: in _update_retryable
+    return self.__database.client._retryable_write(
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1523: in _retryable_write
+    return self._retry_with_session(retryable, func, s, bulk)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1421: in _retry_with_session
+    return self._retry_internal(
+/root/.venv/lib/python3.11/site-packages/pymongo/_csot.py:107: in csot_wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1462: in _retry_internal
+    ).run()
+      ^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2315: in run
+    return self._read() if self._is_read else self._write()
+                                              ^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2423: in _write
+    return self._func(self._session, conn, self._retryable)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:862: in _update
+    return self._update(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:825: in _update
+    _check_write_command_response(result)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:266: in _check_write_command_response
+    _raise_last_write_error(write_errors)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:238: in _raise_last_write_error
+    raise DuplicateKeyError(error.get("errmsg"), 11000, error)
+E   pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}</error></testcase><testcase classname="tests.test_security_fixes.TestAttachmentMimeValidation" name="test_invalid_mime_rejected[application/zip]" time="0.113" /><testcase classname="tests.test_security_fixes.TestRegressionBasics" name="test_create_list_delete_block" time="0.000"><error message="failed on setup with &quot;pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}&quot;">backend/tests/test_security_fixes.py:139: in setup_module
+    _run(_seed_user(USER2_ID, USER2_EMAIL, USER2_TOKEN))
+backend/tests/test_security_fixes.py:47: in _run
+    return asyncio.get_event_loop().run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+backend/tests/test_security_fixes.py:66: in _seed_user
+    await db.users.update_one(
+/usr/local/lib/python3.11/concurrent/futures/thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:1086: in update_one
+    self._update_retryable(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:881: in _update_retryable
+    return self.__database.client._retryable_write(
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1523: in _retryable_write
+    return self._retry_with_session(retryable, func, s, bulk)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1421: in _retry_with_session
+    return self._retry_internal(
+/root/.venv/lib/python3.11/site-packages/pymongo/_csot.py:107: in csot_wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1462: in _retry_internal
+    ).run()
+      ^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2315: in run
+    return self._read() if self._is_read else self._write()
+                                              ^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2423: in _write
+    return self._func(self._session, conn, self._retryable)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:862: in _update
+    return self._update(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:825: in _update
+    _check_write_command_response(result)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:266: in _check_write_command_response
+    _raise_last_write_error(write_errors)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:238: in _raise_last_write_error
+    raise DuplicateKeyError(error.get("errmsg"), 11000, error)
+E   pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}</error></testcase><testcase classname="tests.test_security_fixes.TestAttachmentMimeValidation" name="test_valid_mime_accepted[image/jpeg]" time="0.107" /><testcase classname="tests.test_security_fixes.TestRegressionBasics" name="test_expense_crud_with_valid_attachment" time="0.000"><error message="failed on setup with &quot;pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}&quot;">backend/tests/test_security_fixes.py:139: in setup_module
+    _run(_seed_user(USER2_ID, USER2_EMAIL, USER2_TOKEN))
+backend/tests/test_security_fixes.py:47: in _run
+    return asyncio.get_event_loop().run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+backend/tests/test_security_fixes.py:66: in _seed_user
+    await db.users.update_one(
+/usr/local/lib/python3.11/concurrent/futures/thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:1086: in update_one
+    self._update_retryable(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:881: in _update_retryable
+    return self.__database.client._retryable_write(
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1523: in _retryable_write
+    return self._retry_with_session(retryable, func, s, bulk)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1421: in _retry_with_session
+    return self._retry_internal(
+/root/.venv/lib/python3.11/site-packages/pymongo/_csot.py:107: in csot_wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1462: in _retry_internal
+    ).run()
+      ^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2315: in run
+    return self._read() if self._is_read else self._write()
+                                              ^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2423: in _write
+    return self._func(self._session, conn, self._retryable)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:862: in _update
+    return self._update(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:825: in _update
+    _check_write_command_response(result)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:266: in _check_write_command_response
+    _raise_last_write_error(write_errors)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:238: in _raise_last_write_error
+    raise DuplicateKeyError(error.get("errmsg"), 11000, error)
+E   pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}</error></testcase><testcase classname="tests.test_security_fixes.TestAttachmentMimeValidation" name="test_valid_mime_accepted[image/png]" time="0.090" /><testcase classname="tests.test_security_fixes.TestRegressionBasics" name="test_export_year_pdf" time="0.000"><error message="failed on setup with &quot;pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}&quot;">backend/tests/test_security_fixes.py:139: in setup_module
+    _run(_seed_user(USER2_ID, USER2_EMAIL, USER2_TOKEN))
+backend/tests/test_security_fixes.py:47: in _run
+    return asyncio.get_event_loop().run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+backend/tests/test_security_fixes.py:66: in _seed_user
+    await db.users.update_one(
+/usr/local/lib/python3.11/concurrent/futures/thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:1086: in update_one
+    self._update_retryable(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:881: in _update_retryable
+    return self.__database.client._retryable_write(
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1523: in _retryable_write
+    return self._retry_with_session(retryable, func, s, bulk)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1421: in _retry_with_session
+    return self._retry_internal(
+/root/.venv/lib/python3.11/site-packages/pymongo/_csot.py:107: in csot_wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1462: in _retry_internal
+    ).run()
+      ^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2315: in run
+    return self._read() if self._is_read else self._write()
+                                              ^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2423: in _write
+    return self._func(self._session, conn, self._retryable)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:862: in _update
+    return self._update(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:825: in _update
+    _check_write_command_response(result)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:266: in _check_write_command_response
+    _raise_last_write_error(write_errors)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:238: in _raise_last_write_error
+    raise DuplicateKeyError(error.get("errmsg"), 11000, error)
+E   pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}</error></testcase><testcase classname="tests.test_security_fixes.TestAttachmentMimeValidation" name="test_valid_mime_accepted[application/pdf]" time="0.092" /><testcase classname="tests.test_security_fixes.TestAttachmentMimeValidation" name="test_no_attachment_accepted" time="0.088" /><testcase classname="tests.test_security_fixes.TestAttachmentSizeLimit" name="test_oversize_rejected_on_post" time="0.000"><error message="failed on setup with &quot;pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}&quot;">backend/tests/test_security_fixes.py:139: in setup_module
+    _run(_seed_user(USER2_ID, USER2_EMAIL, USER2_TOKEN))
+backend/tests/test_security_fixes.py:47: in _run
+    return asyncio.get_event_loop().run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+backend/tests/test_security_fixes.py:66: in _seed_user
+    await db.users.update_one(
+/usr/local/lib/python3.11/concurrent/futures/thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:1086: in update_one
+    self._update_retryable(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:881: in _update_retryable
+    return self.__database.client._retryable_write(
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1523: in _retryable_write
+    return self._retry_with_session(retryable, func, s, bulk)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1421: in _retry_with_session
+    return self._retry_internal(
+/root/.venv/lib/python3.11/site-packages/pymongo/_csot.py:107: in csot_wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1462: in _retry_internal
+    ).run()
+      ^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2315: in run
+    return self._read() if self._is_read else self._write()
+                                              ^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2423: in _write
+    return self._func(self._session, conn, self._retryable)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:862: in _update
+    return self._update(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:825: in _update
+    _check_write_command_response(result)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:266: in _check_write_command_response
+    _raise_last_write_error(write_errors)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:238: in _raise_last_write_error
+    raise DuplicateKeyError(error.get("errmsg"), 11000, error)
+E   pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}</error></testcase><testcase classname="tests.test_security_fixes.TestRateLimitClose" name="test_close_rate_limit" time="4.688" /><testcase classname="tests.test_security_fixes.TestAttachmentSizeLimit" name="test_under_limit_accepted" time="0.000"><error message="failed on setup with &quot;pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}&quot;">backend/tests/test_security_fixes.py:139: in setup_module
+    _run(_seed_user(USER2_ID, USER2_EMAIL, USER2_TOKEN))
+backend/tests/test_security_fixes.py:47: in _run
+    return asyncio.get_event_loop().run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+backend/tests/test_security_fixes.py:66: in _seed_user
+    await db.users.update_one(
+/usr/local/lib/python3.11/concurrent/futures/thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:1086: in update_one
+    self._update_retryable(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:881: in _update_retryable
+    return self.__database.client._retryable_write(
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1523: in _retryable_write
+    return self._retry_with_session(retryable, func, s, bulk)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1421: in _retry_with_session
+    return self._retry_internal(
+/root/.venv/lib/python3.11/site-packages/pymongo/_csot.py:107: in csot_wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1462: in _retry_internal
+    ).run()
+      ^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2315: in run
+    return self._read() if self._is_read else self._write()
+                                              ^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2423: in _write
+    return self._func(self._session, conn, self._retryable)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:862: in _update
+    return self._update(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:825: in _update
+    _check_write_command_response(result)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:266: in _check_write_command_response
+    _raise_last_write_error(write_errors)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:238: in _raise_last_write_error
+    raise DuplicateKeyError(error.get("errmsg"), 11000, error)
+E   pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}</error></testcase><testcase classname="tests.test_security_fixes.TestAttachmentSizeLimit" name="test_oversize_rejected_on_put" time="0.013"><error message="failed on setup with &quot;pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}&quot;">backend/tests/test_security_fixes.py:139: in setup_module
+    _run(_seed_user(USER2_ID, USER2_EMAIL, USER2_TOKEN))
+backend/tests/test_security_fixes.py:47: in _run
+    return asyncio.get_event_loop().run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+backend/tests/test_security_fixes.py:66: in _seed_user
+    await db.users.update_one(
+/usr/local/lib/python3.11/concurrent/futures/thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:1086: in update_one
+    self._update_retryable(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:881: in _update_retryable
+    return self.__database.client._retryable_write(
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1523: in _retryable_write
+    return self._retry_with_session(retryable, func, s, bulk)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1421: in _retry_with_session
+    return self._retry_internal(
+/root/.venv/lib/python3.11/site-packages/pymongo/_csot.py:107: in csot_wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1462: in _retry_internal
+    ).run()
+      ^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2315: in run
+    return self._read() if self._is_read else self._write()
+                                              ^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2423: in _write
+    return self._func(self._session, conn, self._retryable)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:862: in _update
+    return self._update(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:825: in _update
+    _check_write_command_response(result)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:266: in _check_write_command_response
+    _raise_last_write_error(write_errors)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:238: in _raise_last_write_error
+    raise DuplicateKeyError(error.get("errmsg"), 11000, error)
+E   pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}</error></testcase><testcase classname="tests.test_security_fixes.TestAttachmentSizeLimit" name="test_invalid_mime_rejected_on_put" time="0.000"><error message="failed on setup with &quot;pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}&quot;">backend/tests/test_security_fixes.py:139: in setup_module
+    _run(_seed_user(USER2_ID, USER2_EMAIL, USER2_TOKEN))
+backend/tests/test_security_fixes.py:47: in _run
+    return asyncio.get_event_loop().run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+backend/tests/test_security_fixes.py:66: in _seed_user
+    await db.users.update_one(
+/usr/local/lib/python3.11/concurrent/futures/thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:1086: in update_one
+    self._update_retryable(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:881: in _update_retryable
+    return self.__database.client._retryable_write(
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1523: in _retryable_write
+    return self._retry_with_session(retryable, func, s, bulk)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1421: in _retry_with_session
+    return self._retry_internal(
+/root/.venv/lib/python3.11/site-packages/pymongo/_csot.py:107: in csot_wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1462: in _retry_internal
+    ).run()
+      ^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2315: in run
+    return self._read() if self._is_read else self._write()
+                                              ^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2423: in _write
+    return self._func(self._session, conn, self._retryable)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:862: in _update
+    return self._update(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:825: in _update
+    _check_write_command_response(result)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:266: in _check_write_command_response
+    _raise_last_write_error(write_errors)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:238: in _raise_last_write_error
+    raise DuplicateKeyError(error.get("errmsg"), 11000, error)
+E   pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}</error></testcase><testcase classname="tests.test_security_fixes.TestRateLimitIsolation" name="test_user2_not_affected_by_user1_quota" time="0.000"><error message="failed on setup with &quot;pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: &quot;sec2@quota.local&quot; }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}&quot;">backend/tests/test_security_fixes.py:139: in setup_module
+    _run(_seed_user(USER2_ID, USER2_EMAIL, USER2_TOKEN))
+backend/tests/test_security_fixes.py:47: in _run
+    return asyncio.get_event_loop().run_until_complete(coro)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/usr/local/lib/python3.11/asyncio/base_events.py:654: in run_until_complete
+    return future.result()
+           ^^^^^^^^^^^^^^^
+backend/tests/test_security_fixes.py:66: in _seed_user
+    await db.users.update_one(
+/usr/local/lib/python3.11/concurrent/futures/thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:1086: in update_one
+    self._update_retryable(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:881: in _update_retryable
+    return self.__database.client._retryable_write(
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1523: in _retryable_write
+    return self._retry_with_session(retryable, func, s, bulk)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1421: in _retry_with_session
+    return self._retry_internal(
+/root/.venv/lib/python3.11/site-packages/pymongo/_csot.py:107: in csot_wrapper
+    return func(self, *args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:1462: in _retry_internal
+    ).run()
+      ^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2315: in run
+    return self._read() if self._is_read else self._write()
+                                              ^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/mongo_client.py:2423: in _write
+    return self._func(self._session, conn, self._retryable)  # type: ignore
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:862: in _update
+    return self._update(
+/root/.venv/lib/python3.11/site-packages/pymongo/collection.py:825: in _update
+    _check_write_command_response(result)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:266: in _check_write_command_response
+    _raise_last_write_error(write_errors)
+/root/.venv/lib/python3.11/site-packages/pymongo/helpers.py:238: in _raise_last_write_error
+    raise DuplicateKeyError(error.get("errmsg"), 11000, error)
+E   pymongo.errors.DuplicateKeyError: E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }, full error: {'index': 0, 'code': 11000, 'errmsg': 'E11000 duplicate key error collection: quota_app.users index: email_1 dup key: { email: "sec2@quota.local" }', 'keyPattern': {'email': 1}, 'keyValue': {'email': 'sec2@quota.local'}}</error></testcase><testcase classname="tests.test_security_fixes.TestRateLimitResend" name="test_resend_rate_limit" time="2.157" /><testcase classname="tests.test_security_fixes.TestRateLimitExportEmail" name="test_export_email_rate_limit" time="1.949" /></testsuite></testsuites>
