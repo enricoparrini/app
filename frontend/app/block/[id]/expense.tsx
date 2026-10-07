@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, Paperclip, X } from "lucide-react-native";
+import { ChevronLeft, Paperclip, Pencil, X } from "lucide-react-native";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
 import * as ImageManipulator from "expo-image-manipulator";
@@ -44,6 +44,7 @@ export default function ExpenseForm() {
   const [attMime, setAttMime] = useState<string | null>(null);
   const [attName, setAttName] = useState<string | null>(null);
   const [attPreview, setAttPreview] = useState<string | null>(null);
+  const [pctEditing, setPctEditing] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -197,30 +198,45 @@ export default function ExpenseForm() {
         </View>
 
         <Text style={styles.label}>Divisione: {cfg.parent1_name} {pct1.toFixed(0)}% · {cfg.parent2_name} {(100 - pct1).toFixed(0)}%</Text>
-        <View style={styles.pctRow}>
-          {[0, 25, 50, 75, 100].map((v) => (
-            <Pressable
-              key={v}
-              testID={`pct-${v}`}
-              onPress={() => setPct1(v)}
-              style={[styles.pctChip, pct1 === v && styles.pctChipActive]}
-            >
-              <Text style={[styles.pctChipText, pct1 === v && styles.pctChipTextActive]}>
-                {v}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-        <TextInput
-          testID="pct-input"
-          value={String(pct1)}
-          onChangeText={(t) => {
-            const n = parseInt(t.replace(/\D/g, "") || "0", 10);
-            if (!isNaN(n) && n <= 100) setPct1(n);
-          }}
-          keyboardType="numeric"
-          style={[styles.input, { textAlign: "center" }]}
-        />
+        {!pctEditing ? (
+          <Pressable
+            testID="pct-edit-toggle"
+            onPress={() => setPctEditing(true)}
+            style={styles.pctRead}
+          >
+            <Text style={styles.pctReadText}>
+              {pct1.toFixed(0)}% / {(100 - pct1).toFixed(0)}%
+            </Text>
+            <Pencil color={colors.muted} size={14} />
+          </Pressable>
+        ) : (
+          <>
+            <View style={styles.pctRow}>
+              {[0, 25, 50, 75, 100].map((v) => (
+                <Pressable
+                  key={v}
+                  testID={`pct-${v}`}
+                  onPress={() => setPct1(v)}
+                  style={[styles.pctChip, pct1 === v && styles.pctChipActive]}
+                >
+                  <Text style={[styles.pctChipText, pct1 === v && styles.pctChipTextActive]}>
+                    {v}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+            <TextInput
+              testID="pct-input"
+              value={String(pct1)}
+              onChangeText={(t) => {
+                const n = parseInt(t.replace(/\D/g, "") || "0", 10);
+                if (!isNaN(n) && n <= 100) setPct1(n);
+              }}
+              keyboardType="numeric"
+              style={[styles.input, { textAlign: "center" }]}
+            />
+          </>
+        )}
 
         <Text style={styles.label}>Allegato (opzionale)</Text>
         {attData ? (
@@ -347,6 +363,19 @@ const styles = StyleSheet.create({
   segBtnText: { color: colors.onSurface, fontWeight: "600" },
   segBtnTextActive: { color: colors.onBrandPrimary },
   pctRow: { flexDirection: "row", gap: 6, marginTop: 6 },
+  pctRead: {
+    marginTop: 6,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  pctReadText: { color: colors.onSurface, fontSize: 15, fontWeight: "600" },
   pctChip: {
     flex: 1,
     paddingVertical: 10,

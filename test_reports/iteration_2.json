@@ -1,0 +1,48 @@
+{
+  "summary": "Bug fix verification: /app/frontend/src/notifications.ts Expo Go detection + regression smoke. Code review PASSED: isExpoGo correctly derived from Constants.executionEnvironment === ExecutionEnvironment.StoreClient; setNotificationHandler guarded by (!isExpoGo && Platform.OS !== 'web'); both requestPermission() and scheduleReminders() early-return when isExpoGo || Platform.OS === 'web'. Preview loads cleanly on web: login screen renders with testID 'google-signin-button' ('Accedi con Google') and no notifications-related crash. Backend regression smoke 3/3 PASSED (GET /api/ 200, GET /api/auth/me 401 w/o token, POST /api/auth/session invalid 401). SEPARATE PRE-EXISTING BUG detected (unrelated to this fix): navigating to /setup or /settings on web triggers red-screen 'ExpoSecureStore.default.deleteValueWithKeyAsync is not a function' from src/api/client.ts:22 (SecureStore.deleteItemAsync called inside setToken(null) during 401 handling). Reporting for main agent.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Navigate to /setup or /settings on web preview while unauthenticated (401 from /api/auth/me triggers client.setToken(null) -> SecureStore.deleteItemAsync).",
+        "issue": "Red-screen Uncaught Error 'ExpoSecureStore.default.deleteValueWithKeyAsync is not a function'. Reference: /app/frontend/src/api/client.ts:22. expo-secure-store on web does not implement deleteItemAsync. Guard with Platform.OS === 'web' using AsyncStorage/localStorage fallback, or wrap in try/catch. This is PRE-EXISTING, not introduced by the notifications.ts fix.",
+        "affected_testIDs": []
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "src/api/client.ts",
+        "issue": "SecureStore.deleteItemAsync throws on web (expo-secure-store web shim). Reference: /app/frontend/src/api/client.ts:22. Add Platform.OS === 'web' guard with localStorage/AsyncStorage fallback. Not caused by notifications fix but visible in preview."
+      },
+      {
+        "component": "src/notifications.ts",
+        "issue": "Benign: on web, 'import * as Notifications from \"expo-notifications\"' emits warnings 'Listening to push token changes is not yet fully supported on web'. Not a crash; just noise. Could be further mitigated via a conditional dynamic import if a cleaner console is desired. Reference: /app/frontend/src/notifications.ts:1."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_quota_backend.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Fix src/api/client.ts setToken(null) for web: guard SecureStore.deleteItemAsync with Platform.OS !== 'web' or wrap in try/catch; mirror the same for setItemAsync/getItemAsync. This currently red-screens the preview whenever any /api call returns 401 (very common during routing between protected screens).",
+    "(Optional) Lazy/conditional import of expo-notifications in notifications.ts to silence web warnings about push-token listeners."
+  ],
+  "critical_code_review_comments": [
+    "notifications.ts fix is correct and minimal: isExpoGo detection via Constants.executionEnvironment === ExecutionEnvironment.StoreClient matches Expo SDK 53+ recommendation; both exported functions are no-ops on Expo Go and web; handler registration is also skipped on both; try/catch around schedule logic prevents unexpected crashes.",
+    "settings.tsx (line 61) and setup.tsx (lines 77-78) call the guarded helpers unconditionally — this is fine because the helpers themselves short-circuit; no caller-side change needed.",
+    "Pre-existing: src/api/client.ts has no web/SecureStore guard — crashes on 401 flow in preview."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (3/3 smoke)", "frontend": "notifications fix verified; separate SecureStore red-screen reproducible"},
+  "seed_data_creation": "None required for this iteration (unauthenticated login screen was sufficient to validate the notifications no-op path on web). The /setup and /settings direct navigation uncovered the SecureStore issue without needing a seeded session.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Preview URL = https://co-parent-expenses-3.preview.emergentagent.com/ (React Native Web). Login testID = 'google-signin-button'. Full backend regression already covered by /app/backend/tests/test_quota_backend.py (19 tests, iteration_1). To reproduce the SecureStore red-screen: open /settings or /setup directly without a session; the /api/auth/me 401 triggers client.ts:22 (SecureStore.deleteItemAsync) which errors on web. After main agent patches client.ts, retest by navigating both routes and confirming no PAGE_ERROR in console.",
+  "rca_of_issue": "Original notifications.ts crash RCA: in Expo SDK 53+ Expo Go removed push notification APIs; calling Notifications.scheduleNotificationAsync / setNotificationHandler in Expo Go can throw. The fix detects Expo Go via Constants.executionEnvironment === ExecutionEnvironment.StoreClient and short-circuits all three touch points (handler registration, requestPermission, scheduleReminders). It also short-circuits on Platform.OS === 'web' because the preview runs as React Native Web, where expo-notifications is only partially implemented. VERIFIED: preview no longer crashes on load; login screen reachable. Secondary RCA (separate issue): expo-secure-store web shim lacks deleteItemAsync; calling it from setToken(null) during 401 handling throws 'deleteValueWithKeyAsync is not a function' — needs Platform guard in src/api/client.ts."
+}

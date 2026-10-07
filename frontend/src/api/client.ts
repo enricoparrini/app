@@ -1,25 +1,55 @@
 import * as SecureStore from "expo-secure-store";
+import { Platform } from "react-native";
 
 const BASE = process.env.EXPO_PUBLIC_BACKEND_URL;
 const TOKEN_KEY = "quota_session_token";
 
 let memToken: string | null = null;
 
-export async function getToken(): Promise<string | null> {
-  if (memToken) return memToken;
+const isWeb = Platform.OS === "web";
+
+async function readStored(): Promise<string | null> {
+  if (isWeb) {
+    try {
+      return typeof localStorage !== "undefined"
+        ? localStorage.getItem(TOKEN_KEY)
+        : null;
+    } catch {
+      return null;
+    }
+  }
   try {
-    const t = await SecureStore.getItemAsync(TOKEN_KEY);
-    memToken = t;
-    return t;
+    return await SecureStore.getItemAsync(TOKEN_KEY);
   } catch {
     return null;
   }
 }
 
+async function writeStored(token: string | null): Promise<void> {
+  if (isWeb) {
+    try {
+      if (typeof localStorage === "undefined") return;
+      if (token) localStorage.setItem(TOKEN_KEY, token);
+      else localStorage.removeItem(TOKEN_KEY);
+    } catch {}
+    return;
+  }
+  try {
+    if (token) await SecureStore.setItemAsync(TOKEN_KEY, token);
+    else await SecureStore.deleteItemAsync(TOKEN_KEY);
+  } catch {}
+}
+
+export async function getToken(): Promise<string | null> {
+  if (memToken) return memToken;
+  const t = await readStored();
+  memToken = t;
+  return t;
+}
+
 export async function setToken(token: string | null) {
   memToken = token;
-  if (token) await SecureStore.setItemAsync(TOKEN_KEY, token);
-  else await SecureStore.deleteItemAsync(TOKEN_KEY);
+  await writeStored(token);
 }
 
 async function request<T = any>(

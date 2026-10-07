@@ -1,0 +1,40 @@
+{
+  "summary": "Follow-up fix verification: /app/frontend/src/api/client.ts now uses localStorage on web and SecureStore on native. CONFIRMED FIXED: the previous red-screen 'ExpoSecureStore.default.deleteValueWithKeyAsync is not a function' is gone on both /setup and /settings navigation (0 occurrences in page body / page errors / console). Code review PASS: isWeb branch uses localStorage.{getItem,setItem,removeItem} wrapped in try/catch; native branch uses SecureStore.{getItem,setItem,deleteItem}Async wrapped in try/catch; getToken/setToken wire into readStored/writeStored helpers correctly. Regression notifications.ts: still correctly early-returns on isExpoGo || Platform.OS === 'web' and setNotificationHandler is guarded by (!isExpoGo && Platform.OS !== 'web'). Backend regression smoke 3/3 PASS (GET /api/ 200 + ok:true, GET /api/auth/me 401 w/o token, POST /api/auth/session invalid 401). NEW SEPARATE ISSUE (not blocking the targeted fix): visiting /settings while unauthenticated produces a dev red-screen 'Non autorizzato' uncaught promise rejection from src/api/client.ts:68 thrown through app/settings.tsx:36 — settings screen does not catch the 401 like login.tsx does with `.catch(() => ({ config: null }))`, and there is no route guard redirecting unauthenticated users away from /settings. This is a UX / error-handling bug separate from the SecureStore fix.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Navigating directly to /settings (and likely other protected routes) without a valid session.",
+        "issue": "Uncaught Error 'Non autorizzato' thrown by src/api/client.ts:68 when /api/auth/me (or /api/config) returns 401. Call stack: request (src/api/client.ts:68:11) <- app/settings.tsx:36:26. The screen calls api.getConfig() / api.me() in useEffect without a .catch() and there is no auth guard redirecting unauthenticated users to /login. app/login.tsx does handle this with `.catch(() => ({ config: null }))` so the home flow is fine. Add try/catch (or .catch) in app/settings.tsx (and any other protected screen effect) and ideally a shared auth guard in app/_layout.tsx that redirects to /login when user is null. This is a dev-mode red-screen; in production it would surface as a less visible unhandled rejection but still a broken UX.",
+        "affected_testIDs": []
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_quota_backend.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Add a try/catch (or .catch()) around api.getConfig()/api.me() calls in app/settings.tsx line ~36 so a 401 does not surface as an uncaught rejection, and redirect to /login on auth failure.",
+    "Preferable: add a shared auth guard in app/_layout.tsx (or a hook in AuthContext) that redirects to /login whenever user is null and the route is protected. This will cover /setup, /settings, /, etc., in one place.",
+    "No change needed to src/api/client.ts for this iteration — the Platform.OS === 'web' localStorage branch is correct and verified."
+  ],
+  "critical_code_review_comments": [
+    "client.ts fix is correct and minimal: isWeb branch uses localStorage with typeof-check and try/catch; native branch wraps SecureStore in try/catch; writeStored(null) correctly maps to localStorage.removeItem on web (no more deleteValueWithKeyAsync).",
+    "setToken(null) now safe on 401 across platforms; memToken is cleared before storage write so getToken() returns null immediately on next read even if storage write fails.",
+    "Pre-existing: /api protected calls in screens other than login.tsx do not handle the 'Non autorizzato' rejection; needs either per-call catch or a global auth guard."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (3/3 smoke)", "frontend": "SecureStore red-screen fix 100% verified; one separate pre-existing 401 handling red-screen on /settings"},
+  "seed_data_creation": "None.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Preview URL = https://co-parent-expenses-3.preview.emergentagent.com/. Login testID = 'google-signin-button'. The deleteValueWithKeyAsync bug is confirmed fixed via client.ts web branch using localStorage. The remaining red-screen is a separate 401 handling issue in app/settings.tsx (and lack of auth guard), not caused by the client.ts fix. Backend smoke covered by /app/backend/tests/test_quota_backend.py (3 tests run this iteration; full 19-test suite available).",
+  "rca_of_issue": "RCA (targeted bug — RESOLVED): expo-secure-store web shim doesn't implement deleteItemAsync/getItemAsync/setItemAsync; calling SecureStore.deleteItemAsync on web (triggered via setToken(null) in request's 401 branch) threw 'ExpoSecureStore.default.deleteValueWithKeyAsync is not a function' causing a dev red-screen. FIX APPLIED in /app/frontend/src/api/client.ts: readStored/writeStored now branch on Platform.OS === 'web' and use localStorage.{getItem,setItem,removeItem} wrapped in try/catch; native path uses SecureStore wrapped in try/catch. VERIFIED by: (1) hitting /api/auth/me with bad_token (401) via fetch in page context — no SecureStore error; (2) navigating to /setup and /settings — body text and page errors contain 0 occurrences of 'deleteValueWithKeyAsync' or 'ExpoSecureStore'. Secondary RCA (new, separate): /settings route calls api.getConfig/api.me in a useEffect without catching the thrown 'Non autorizzato' from client.ts:68, and there is no auth guard; result is an unhandled promise rejection that LogBox renders as a red-screen in dev. Fix: add .catch and/or a global auth guard redirecting to /login."
+}
