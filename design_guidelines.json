@@ -1,0 +1,170 @@
+{
+  "app_name": "Quota",
+  "personality": "1 iOS-Native Clean",
+  "personality_one_liner": "A calm, trustworthy, and minimal shared-expense tracker designed for clarity and ease of use in sensitive co-parenting contexts.",
+  "color": {
+    "surface": "#FDFBF7",
+    "onSurface": "#1A1C1A",
+    "surfaceSecondary": "#FFFFFF",
+    "onSurfaceSecondary": "#1A1C1A",
+    "surfaceTertiary": "#F4EFE6",
+    "onSurfaceTertiary": "#2B2D2C",
+    "surfaceInverse": "#2B2D2C",
+    "onSurfaceInverse": "#FDFBF7",
+    "brand": "#7CA982",
+    "brandPrimary": "#5B8266",
+    "onBrandPrimary": "#FFFFFF",
+    "brandSecondary": "#C2D5C4",
+    "onBrandSecondary": "#1A1C1A",
+    "brandTertiary": "#E4EDE5",
+    "onBrandTertiary": "#1A1C1A",
+    "success": "#5B8266",
+    "onSuccess": "#FFFFFF",
+    "warning": "#D49A44",
+    "onWarning": "#FFFFFF",
+    "error": "#B85C50",
+    "onError": "#FFFFFF",
+    "info": "#6B8E9B",
+    "onInfo": "#FFFFFF",
+    "border": "#E8E2D9",
+    "borderStrong": "#D1C9BC",
+    "divider": "#E8E2D9",
+    "muted": "#737A74",
+    "onBrand": "#FFFFFF"
+  },
+  "typography": {
+    "displayFontFamily": "Plus Jakarta Sans",
+    "textFontFamily": "Plus Jakarta Sans",
+    "scale": {
+      "sm": 12,
+      "base": 14,
+      "lg": 16,
+      "xl": 20,
+      "2xl": 24
+    }
+  },
+  "spacing": {
+    "rule": "Generous vertical spacing to maintain a calm, uncrowded feel. Inputs and list rows should have substantial tap areas.",
+    "xs": 4,
+    "sm": 8,
+    "md": 12,
+    "lg": 16,
+    "xl": 24,
+    "2xl": 32,
+    "3xl": 48
+  },
+  "radius_tokens": {
+    "sm": 6,
+    "md": 12,
+    "lg": 20,
+    "pill": 999
+  },
+  "shadow_tier": "1",
+  "navigation": "stack_only",
+  "icon_set": "Phosphor",
+  "glassmorphism": {
+    "enabled": true,
+    "do's": [
+      "Use on the sticky header of the Monthly Detail screen to keep the balance visible while scrolling expenses.",
+      "Use behind the central floating '+' button if it overlaps scrolling list content.",
+      "Use for bottom-sheet drag handles and headers."
+    ],
+    "dont's": [
+      "Do not apply to standard list items or cards.",
+      "Do not apply to form inputs."
+    ]
+  },
+  "platform_libraries": {
+    "glass": {
+      "ios": "expo-glass-effect",
+      "android": "expo-blur",
+      "low_end_android_fallback": "solid surfaceSecondary"
+    },
+    "image": "expo-image",
+    "blur": "expo-blur",
+    "bottom_sheet": "@gorhom/bottom-sheet",
+    "animation": "react-native-reanimated",
+    "gesture": "react-native-gesture-handler"
+  },
+  "haptics": {
+    "events": {
+      "primary_button_press": "light",
+      "expense_added": "success",
+      "slider_value_change": "selection",
+      "block_closed": "medium",
+      "delete_expense": "warning"
+    }
+  },
+  "screens": [
+    {
+      "name": "Onboarding & Configurazione",
+      "purpose": "Accogliere l'utente con il login Google e impostare i dati del co-genitore (nomi, email, %, giorno saldo).",
+      "states": {
+        "loading": "Spinner centrato durante l'autenticazione.",
+        "empty": "Form pulito con campi obbligatori per Genitore 1 e Genitore 2.",
+        "error": "Banner o inline error per validazione form (es. email non valida)."
+      },
+      "layout": "Scena full-bleed con immagine hero astratta in alto, seguita da un form single-column a scorrimento. Bottone CTA primario ('Inizia'/'Salva') sticky in basso per comodità d'uso."
+    },
+    {
+      "name": "Home (Lista Blocchi)",
+      "purpose": "Mostrare lo storico dei blocchi mensili (ultimi 24 mesi) e lo stato del mese corrente.",
+      "states": {
+        "loading": "Skeleton dei blocchi mensili.",
+        "empty": "Illustrazione minimale (es. texture sabbia/carta) con testo 'Nessun blocco registrato. Aggiungi la prima spesa per iniziare.'",
+        "error": "Messaggio 'Impossibile caricare lo storico' con tasto 'Riprova'."
+      },
+      "layout": "Lista di card verticali (una per mese). La card del mese corrente (aperto) ha uno sfondo `brandTertiary` per risaltare, mentre i mesi chiusi usano `surfaceSecondary` con opacità ridotta o badge 'Chiuso'. Pulsante FAB (Floating Action Button) circolare o a pillola, posizionato centralmente in basso, con effetto glass se il contenuto ci scorre dietro, per l'aggiunta rapida di una spesa."
+    },
+    {
+      "name": "Dettaglio Blocco Mensile",
+      "purpose": "Visualizzare le spese del mese, i totali calcolati e permettere la chiusura del blocco.",
+      "states": {
+        "loading": "Skeleton delle spese e dei totali.",
+        "empty": "Illustrazione morbida al centro: 'Ancora nessuna spesa per questo mese.'",
+        "error": "Messaggio di errore caricamento dati con pulsante 'Riprova'."
+      },
+      "layout": "Header sticky (con glassmorphism) che mostra in grande il 'Totale da restituire', offrendo gerarchia immediata. Sotto, un riepilogo a due colonne ('Totale spese', 'La tua quota'). Segue la lista delle spese (cards minimali con data, descrizione, importo e icone per chi ha pagato). A fine lista (o sticky bottom) il bottone 'Chiudi blocco e registra bonifico'. Se il blocco è chiuso, la UI è in sola lettura."
+    },
+    {
+      "name": "Form Aggiungi/Modifica Spesa",
+      "purpose": "Inserimento super rapido di una spesa con slider per la percentuale e caricamento allegati.",
+      "states": {
+        "loading": "Overlay semi-trasparente se in fase di salvataggio.",
+        "empty": "Form vuoto con default al 50% e data odierna.",
+        "error": "Messaggio inline rosso sotto i campi mancanti (es. Importo)."
+      },
+      "layout": "Bottom-sheet (Gorhom) o schermata Stack dedicata. Input in singola colonna con etichette sopra. Segmented control per 'Chi ha pagato' (Genitore 1 / Genitore 2). Slider touch-friendly per le percentuali (con label aggiornata in tempo reale: 50% - 50%). Area tratteggiata generosa per caricare l'allegato con thumbnail visibile dopo l'upload. CTA sticky al bottom."
+    },
+    {
+      "name": "Preview Report & Invio",
+      "purpose": "Mostrare un riepilogo in stile tabellare/Excel prima di generare lo ZIP e inviare l'email.",
+      "states": {
+        "loading": "Generazione PDF/ZIP in corso (spinner con testo 'Creazione report...').",
+        "empty": "N/A",
+        "error": "Errore nella generazione file o invio email, tasto 'Riprova'."
+      },
+      "layout": "Layout strutturato quasi brutalista o tabellare, ottimizzato per mobile ma ispirato ad un foglio di calcolo per trasmettere precisione finanziaria. Intestazioni fisse e righe per ogni spesa. Pulsante CTA primario per 'Conferma e Invia Email'."
+    }
+  ],
+  "images": {
+    "onboarding_hero": {
+      "url": "https://images.unsplash.com/photo-1704975986930-0c09f513c985?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1ODR8MHwxfHNlYXJjaHwxfHxtaW5pbWFsJTIwYWJzdHJhY3QlMjBzYWdlJTIwZ3JlZW4lMjBvcmdhbmljJTIwc2hhcGVzJTIwY2xlYW58ZW58MHx8fHwxNzkxMzY4MzM5fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Astratto minimale con forme organiche verde salvia"
+    },
+    "empty_state_texture": {
+      "url": "https://images.unsplash.com/photo-1629968417841-d87296c4205b?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NTYxODF8MHwxfHNlYXJjaHwzfHxtaW5pbWFsJTIwYWJzdHJhY3QlMjB3YXJtJTIwbmV1dHJhbCUyMHNhbmQlMjBwYXBlciUyMHRleHR1cmV8ZW58MHx8fHwxNzkxMzY4MzM1fDA&ixlib=rb-4.1.0&q=85",
+      "alt": "Texture carta riciclata color sabbia caldo"
+    }
+  },
+  "instructions_to_main_agent": [
+    "Design Language: Usa la personalità '1 iOS-Native Clean' con una palette calda (off-white, sabbia e sage green). NON USARE BLU O INDACO.",
+    "Formato Dati: Mantieni i numeri (importi, percentuali) grandi e chiaramente leggibili. Sostituisci termini ambigui con linguaggio d'azione chiaro ('Quota Mario', 'Totale da restituire' al posto di 'Devi/Ti devono').",
+    "Floating Action Button (FAB): Implementa un pulsante '+' prominente, posizionato centralmente in basso sulla Home. Assicurati che abbia uno Z-index alto e, se necessario, usa un contenitore blur o sfumatura alla base per evitare collisioni con lo scroll.",
+    "Scrolling & Sticky: Nel Dettaglio Blocco, la cifra 'Totale da restituire' DEVE essere in cima. Quando l'utente scorre la lista delle spese, questo blocco diventa un header sticky (usa expo-glass-effect/expo-blur).",
+    "Attachments/Allegati: Nel form spesa, crea un'area di drop/caricamento molto chiara con icona (Phosphor) ed un bordo tratteggiato (`borderStrong`). Se l'immagine viene caricata, mostra una thumbnail quadrata di anteprima limitando l'ingombro visivo.",
+    "Report View: Per la preview del report usa un layout a griglia stretta, imitando un foglio di calcolo. Rimuovi padding in eccesso solo in questa schermata per mostrare il massimo dei dati.",
+    "Interazioni form: Lo slider percentuale deve essere molto fluido. Usa react-native-gesture-handler se necessario per il componente custom, assicurandoti che la somma sia sempre 100%. Usa un haptic feedback quando lo slider scatta al 50%.",
+    "Assicurati che tutto il testo sia esclusivamente in italiano, come richiesto nel problem statement."
+  ]
+}
