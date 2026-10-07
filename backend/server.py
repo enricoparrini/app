@@ -679,7 +679,201 @@ async def resend_email_block(block_id: str, user=Depends(get_current_user)):
     return {"ok": True}
 
 
-# ---------------------------- Startup ----------------------------
+# ---------------------------- Annual PDF Export ----------------------------
+def _build_year_pdf(cfg: Dict[str, Any], year: int, blocks: List[Dict[str, Any]]) -> bytes:
+    """Costruisce un unico PDF annuale (pronto per il 730) con tutte le spese dell'anno."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors as rl_colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, PageBreak
+    )
+
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=15 * mm, rightMargin=15 * mm,
+        topMargin=15 * mm, bottomMargin=15 * mm,
+        title=f"Spese extra {year} - 730"
+    )
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle(
+        "h1", parent=styles["Heading1"],
+        textColor=rl_colors.HexColor("#5B8266"),
+        spaceAfter=4,
+    )
+    h2 = ParagraphStyle(
+        "h2", parent=styles["Heading2"],
+        textColor=rl_colors.HexColor("#2B2D2C"),
+        fontSize=14, spaceBefore=14, spaceAfter=4,
+    )
+    body = ParagraphStyle("body", parent=styles["BodyText"], fontSize=10)
+    small = ParagraphStyle("small", parent=styles["BodyText"], fontSize=9, textColor=rl_colors.HexColor("#737A74"))
+
+    story: List[Any] = []
+    story.append(Paragraph(f"Spese extra di mantenimento — {year}", h1))
+    story.append(Paragraph(
+        f"Genitore 1: <b>{escape(cfg['parent1_name'])}</b> &nbsp;·&nbsp; "
+        f"Genitore 2: <b>{escape(cfg['parent2_name'])}</b>", body))
+    story.append(Paragraph(f"Documento generato il {datetime.now().strftime('%d/%m/%Y')}", small))
+    story.append(Spacer(1, 8))
+
+    # Yearly totals
+    year_total = 0.0
+    year_q1 = 0.0
+    year_q2 = 0.0
+    year_paid1 = 0.0
+    year_paid2 = 0.0
+    for b in blocks:
+        t = _compute_totals(b.get("expenses", []), cfg.get("default_pct_parent1", 50.0))
+        year_total += t["total"]
+        year_q1 += t["quota_parent1"]
+        year_q2 += t["quota_parent2"]
+        year_paid1 += t["paid_parent1"]
+        year_paid2 += t["paid_parent2"]
+
+    summary_data = [
+        ["Totale spese anno", _format_money(year_total)],
+        [f"Quota {cfg['parent1_name']}", _format_money(year_q1)],
+        [f"Quota {cfg['parent2_name']}", _format_money(year_q2)],
+        [f"Pagato da {cfg['parent1_name']}", _format_money(year_paid1)],
+        [f"Pagato da {cfg['parent2_name']}", _format_money(year_paid2)],
+    ]
+    sum_tbl = Table(summary_data, colWidths=[90 * mm, 85 * mm])
+    sum_tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor("#E4EDE5")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), rl_colors.HexColor("#1A1C1A")),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 10),
+        ("GRID", (0, 0), (-1, -1), 0.4, rl_colors.HexColor("#D1C9BC")),
+        ("ALIGN", (1, 0), (1, -1), "RIGHT"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [rl_colors.white, rl_colors.HexColor("#FDFBF7")]),
+        ("LEFTPADDING", (0, 0), (-1, -1), 6),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING", (0, 0), (-1, -1), 5),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 5),
+    ]))
+    story.append(sum_tbl)
+
+    # Months (ordered chronologically)
+    sorted_blocks = sorted(blocks, key=lambda b: (b["year"], b["month"]))
+    for b in sorted_blocks:
+        t = _compute_totals(b.get("expenses", []), cfg.get("default_pct_parent1", 50.0))
+        story.append(Paragraph(escape(b["label"]), h2))
+
+        head = [
+            "#", "Data", "Descrizione", "Importo",
+            "Pagato da", f"% {cfg['parent1_name']}", f"% {cfg['parent2_name']}",
+        ]
+        rows: List[List[str]] = [head]
+        for i, e in enumerate(b.get("expenses", []), 1):
+            paid_name = cfg["parent1_name"] if e.get("paid_by") == "parent1" else cfg["parent2_name"]
+            rows.append([
+                str(i),
+                e.get("date", ""),
+                e.get("description", ""),
+                _format_money(float(e.get("amount", 0))),
+                paid_name,
+                f"{int(e.get('pct_parent1', 0))}%",
+                f"{int(e.get('pct_parent2', 0))}%",
+            ])
+        if len(rows) == 1:
+            rows.append(["", "", "Nessuna spesa in questo mese", "", "", "", ""])
+        rows.append([
+            "", "", "Totale mese",
+            _format_money(t["total"]),
+            "", _format_money(t["quota_parent1"]), _format_money(t["quota_parent2"]),
+        ])
+
+        tbl = Table(rows, colWidths=[8 * mm, 20 * mm, 55 * mm, 22 * mm, 32 * mm, 19 * mm, 19 * mm], repeatRows=1)
+        tbl.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor("#5B8266")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), rl_colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 9),
+            ("GRID", (0, 0), (-1, -1), 0.3, rl_colors.HexColor("#D1C9BC")),
+            ("ALIGN", (3, 1), (3, -1), "RIGHT"),
+            ("ALIGN", (5, 1), (6, -1), "RIGHT"),
+            ("ROWBACKGROUNDS", (0, 1), (-1, -2), [rl_colors.white, rl_colors.HexColor("#F4EFE6")]),
+            ("BACKGROUND", (0, -1), (-1, -1), rl_colors.HexColor("#E4EDE5")),
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ]))
+        story.append(tbl)
+        bon = b.get("bonifico")
+        if bon:
+            story.append(Spacer(1, 4))
+            story.append(Paragraph(
+                f"Bonifico di saldo: {escape(bon.get('bonifico_date',''))} · "
+                f"{_format_money(float(bon.get('bonifico_amount',0)))} · "
+                f"{escape(bon.get('bonifico_note') or '')}", small))
+
+    story.append(Spacer(1, 12))
+    story.append(Paragraph(
+        "Documento riepilogativo generato dall'app Quota. "
+        "Gli importi fanno riferimento alle spese extra di mantenimento registrate nell'anno.",
+        small))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf.read()
+
+
+@api.get("/export/year/{year}")
+async def export_year_pdf(year: int, user=Depends(get_current_user)):
+    """Ritorna un PDF (base64) con tutte le spese dell'anno — pronto per il 730."""
+    cfg = await db.configs.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    if not cfg:
+        raise HTTPException(status_code=400, detail="Configurazione mancante")
+    cursor = db.blocks.find(
+        {"user_id": user["user_id"], "year": year}, {"_id": 0}
+    )
+    blocks = await cursor.to_list(100)
+    pdf_bytes = _build_year_pdf(cfg, year, blocks)
+    return {
+        "filename": f"Spese_extra_{year}.pdf",
+        "mime": "application/pdf",
+        "data": base64.b64encode(pdf_bytes).decode("ascii"),
+    }
+
+
+@api.post("/export/year/{year}/email")
+async def email_year_pdf(year: int, user=Depends(get_current_user)):
+    """Invia il PDF annuale via email al genitore 1."""
+    cfg = await db.configs.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    if not cfg:
+        raise HTTPException(status_code=400, detail="Configurazione mancante")
+    cursor = db.blocks.find(
+        {"user_id": user["user_id"], "year": year}, {"_id": 0}
+    )
+    blocks = await cursor.to_list(100)
+    pdf_bytes = _build_year_pdf(cfg, year, blocks)
+    pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
+    subject = f"Riepilogo annuale spese extra {year}"
+    html = (
+        f'<table role="presentation" width="100%"><tr><td style="padding:24px;'
+        f'font-family:Arial,sans-serif;background:#FDFBF7">'
+        f'<h2 style="color:#5B8266;margin:0 0 12px 0">Riepilogo annuale {year}</h2>'
+        f'<p>In allegato trovi il PDF con tutte le spese extra di mantenimento del {year}, '
+        f'pronto per la dichiarazione dei redditi (730).</p>'
+        f'<p style="font-size:12px;color:#737A74;margin-top:24px">'
+        f'Inviato da {escape(EMAIL_FROM_NAME)}. Non chiederemo mai password o dati di pagamento via email.</p>'
+        f'</td></tr></table>'
+    )
+    await send_email(
+        to_list=[cfg["parent1_email"]],
+        subject=subject,
+        html=html,
+        attachments=[{"filename": f"Spese_extra_{year}.pdf", "content": pdf_b64}],
+    )
+    return {"ok": True}
+
+
+
 @app.on_event("startup")
 async def startup():
     await db.users.create_index("email", unique=True)

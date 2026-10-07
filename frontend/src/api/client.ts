@@ -94,4 +94,10 @@ export const api = {
     }),
   resendEmail: (id: string) =>
     request(`/blocks/${id}/resend-email`, { method: "POST" }),
+  exportYear: (year: number) =>
+    request<{ filename: string; mime: string; data: string }>(
+      `/export/year/${year}`
+    ),
+  emailYear: (year: number) =>
+    request(`/export/year/${year}/email`, { method: "POST" }),
 };

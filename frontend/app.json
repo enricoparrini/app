@@ -21,7 +21,10 @@
         "backgroundColor": "#FDFBF7"
       },
       "package": "com.emergent.coparentexpenses.hn6oin",
-      "permissions": ["READ_EXTERNAL_STORAGE", "SCHEDULE_EXACT_ALARM"]
+      "permissions": [
+        "READ_EXTERNAL_STORAGE",
+        "SCHEDULE_EXACT_ALARM"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -51,7 +54,8 @@
           "photosPermission": "Allega scontrini alle tue spese"
         }
       ],
-      "expo-document-picker"
+      "expo-document-picker",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true
