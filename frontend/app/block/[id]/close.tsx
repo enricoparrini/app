@@ -33,9 +33,6 @@ export default function CloseBlock() {
   const [cfg, setCfg] = useState<any>(null);
   const [date, setDate] = useState(todayIso());
   const [amount, setAmount] = useState("");
-  const [direction, setDirection] = useState<"parent1_to_parent2" | "parent2_to_parent1" | "none">(
-    "none"
-  );
   const [note, setNote] = useState("");
 
   useEffect(() => {
@@ -47,26 +44,39 @@ export default function CloseBlock() {
       setBlock(b);
       setCfg(c);
       const saldo = b?.totals?.saldo || 0;
-      if (saldo > 0.01) {
-        setDirection("parent2_to_parent1");
-        setAmount(saldo.toFixed(2));
-      } else if (saldo < -0.01) {
-        setDirection("parent1_to_parent2");
-        setAmount(Math.abs(saldo).toFixed(2));
-      }
+      // Precompila importo bonifico solo se genitore 1 deve a genitore 2
+      if (saldo < -0.01) setAmount(Math.abs(saldo).toFixed(2));
       setLoading(false);
     })();
   }, [id]);
 
+  const saldo = block?.totals?.saldo ?? 0;
+  // Genitore 1 deve pagare solo se saldo < 0 (ha pagato meno della sua quota)
+  const parent1Owes = saldo < -0.01;
+
   const confirmAndSend = async () => {
     setErr(null);
-    const amtN = parseFloat((amount || "0").replace(",", "."));
-    if (isNaN(amtN) || amtN < 0) return setErr("Importo bonifico non valido");
+    let direction: "parent1_to_parent2" | "parent2_to_parent1" | "none" = "none";
+    if (saldo > 0.01) direction = "parent2_to_parent1";
+    else if (saldo < -0.01) direction = "parent1_to_parent2";
+
+    let bonAmount = 0;
+    let bonDate = date;
+    if (parent1Owes) {
+      const amtN = parseFloat((amount || "0").replace(",", "."));
+      if (isNaN(amtN) || amtN <= 0)
+        return setErr("Inserisci l'importo del bonifico");
+      bonAmount = amtN;
+    } else {
+      // Nessun bonifico richiesto: data=oggi, importo=0, direction derivata
+      bonDate = todayIso();
+    }
+
     setSaving(true);
     try {
       await api.closeBlock(id!, {
-        bonifico_date: date,
-        bonifico_amount: amtN,
+        bonifico_date: bonDate,
+        bonifico_amount: bonAmount,
         bonifico_direction: direction,
         bonifico_note: note.trim() || null,
       });
@@ -89,7 +99,6 @@ export default function CloseBlock() {
     );
   }
 
-  const saldo = block.totals.saldo;
   const saldoText =
     Math.abs(saldo) < 0.01
       ? "Nessun saldo dovuto"
@@ -119,48 +128,40 @@ export default function CloseBlock() {
           <Text style={styles.summarySaldo}>{saldoText}</Text>
         </View>
 
-        <Text style={styles.label}>Direzione bonifico</Text>
-        <View style={styles.segmented}>
-          <SegBtn
-            label={`${cfg.parent2_name.split(" ")[0]} → ${cfg.parent1_name.split(" ")[0]}`}
-            selected={direction === "parent2_to_parent1"}
-            onPress={() => setDirection("parent2_to_parent1")}
-            testID="dir-p2-p1"
-          />
-          <SegBtn
-            label={`${cfg.parent1_name.split(" ")[0]} → ${cfg.parent2_name.split(" ")[0]}`}
-            selected={direction === "parent1_to_parent2"}
-            onPress={() => setDirection("parent1_to_parent2")}
-            testID="dir-p1-p2"
-          />
-          <SegBtn
-            label="Nessuno"
-            selected={direction === "none"}
-            onPress={() => setDirection("none")}
-            testID="dir-none"
-          />
-        </View>
-
-        <Field
-          label="Data bonifico (AAAA-MM-GG)"
-          value={date}
-          onChangeText={setDate}
-          testID="bon-date"
-        />
-        <Field
-          label="Importo bonifico (€)"
-          value={amount}
-          onChangeText={setAmount}
-          keyboardType="decimal-pad"
-          testID="bon-amount"
-        />
-        <Field
-          label="Note (opzionale)"
-          value={note}
-          onChangeText={setNote}
-          testID="bon-note"
-          multiline
-        />
+        {parent1Owes ? (
+          <>
+            <Text style={styles.sectionTitle}>Dati del bonifico</Text>
+            <Field
+              label="Data bonifico (AAAA-MM-GG)"
+              value={date}
+              onChangeText={setDate}
+              testID="bon-date"
+            />
+            <Field
+              label="Importo bonifico (€)"
+              value={amount}
+              onChangeText={setAmount}
+              keyboardType="decimal-pad"
+              testID="bon-amount"
+            />
+            <Field
+              label="Note (opzionale)"
+              value={note}
+              onChangeText={setNote}
+              testID="bon-note"
+              multiline
+            />
+          </>
+        ) : (
+          <View style={styles.noBonifico} testID="no-bonifico-info">
+            <Text style={styles.noBonTitle}>Nessun bonifico necessario</Text>
+            <Text style={styles.noBonText}>
+              {Math.abs(saldo) < 0.01
+                ? "Il blocco verrà chiuso in pareggio."
+                : `Nell'email verrà indicato che ${cfg.parent2_name} deve ${formatMoney(saldo)} a ${cfg.parent1_name}.`}
+            </Text>
+          </View>
+        )}
 
         {err && <Text style={styles.err}>{err}</Text>}
       </ScrollView>
@@ -177,7 +178,9 @@ export default function CloseBlock() {
           ) : (
             <>
               <Send color={colors.onBrandPrimary} size={18} />
-              <Text style={styles.btnText}>Conferma e invia email</Text>
+              <Text style={styles.btnText}>
+                {parent1Owes ? "Conferma e invia email" : "Chiudi e invia email"}
+              </Text>
             </>
           )}
         </Pressable>
@@ -201,20 +204,6 @@ function Field({
         {...rest}
       />
     </View>
-  );
-}
-
-function SegBtn({ selected, onPress, label, testID }: any) {
-  return (
-    <Pressable
-      testID={testID}
-      onPress={onPress}
-      style={[styles.segBtn, selected && styles.segBtnActive]}
-    >
-      <Text style={[styles.segBtnText, selected && styles.segBtnTextActive]} numberOfLines={2}>
-        {label}
-      </Text>
-    </Pressable>
   );
 }
 
@@ -247,6 +236,23 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   summarySaldo: { color: colors.onSurface, marginTop: 8 },
+  sectionTitle: {
+    color: colors.muted,
+    fontSize: 12,
+    fontWeight: "600",
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+    marginTop: 4,
+  },
+  noBonifico: {
+    backgroundColor: colors.surfaceSecondary,
+    borderRadius: 14,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  noBonTitle: { color: colors.onSurface, fontWeight: "700", fontSize: 15 },
+  noBonText: { color: colors.muted, marginTop: 4, lineHeight: 18 },
   label: { color: colors.onSurfaceSecondary, fontSize: 13, fontWeight: "500" },
   input: {
     backgroundColor: colors.surfaceSecondary,
@@ -259,25 +265,6 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 6,
   },
-  segmented: {
-    flexDirection: "row",
-    gap: 6,
-    marginTop: 6,
-  },
-  segBtn: {
-    flex: 1,
-    paddingVertical: 10,
-    paddingHorizontal: 6,
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surfaceSecondary,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  segBtnActive: { backgroundColor: colors.brandPrimary, borderColor: colors.brandPrimary },
-  segBtnText: { color: colors.onSurface, fontWeight: "600", fontSize: 12, textAlign: "center" },
-  segBtnTextActive: { color: colors.onBrandPrimary },
   footer: {
     position: "absolute",
     left: 0,
