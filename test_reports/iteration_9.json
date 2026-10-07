@@ -1,0 +1,48 @@
+{
+  "summary": "Backend-only verification of the ZIP→PDF migration (close/resend-email emit a single combined PDF; HTML preview uses 'Allegato pagina N' labels; bonifico wording changed). Created /app/backend/tests/test_pdf_report.py with 14 tests across 6 classes. RESULT: 5 passed / 9 failed. Root cause of ALL 9 failures: a SINGLE critical backend bug in _build_report_pdf — reportlab's Paragraph parses `<link href=\"#page=N\">` as an INTERNAL named-destination reference (not a PDF URI fragment). doc.build() then raises `ValueError: format not resolved, probably missing URL scheme or undefined destination target for 'page=2'`. This blocks the whole PDF pipeline: POST /api/blocks/{id}/close → 500, POST /api/blocks/{id}/resend-email → 500. Users cannot close blocks at all. Report-HTML endpoint still works (it only calls _compute_page_map, which calls _build_report_pdf with an EMPTY page_map, so no <link> tags are emitted — no crash). The 5 passing tests verify the HTML preview changes (no 'Sì'/'No', 'Allegato pagina N' label, empty <td></td> for expenses without attachments, no base64 leak, header cells unchanged). Reproduced the ValueError in /var/log/supervisor/backend.err.log (see rca_of_issue).",
+  "backend_issues": {
+    "critical": [
+      {
+        "endpoint": "POST /api/blocks/{id}/close + POST /api/blocks/{id}/resend-email",
+        "issue": "500 Internal Server Error whenever block has at least one expense with an attachment. _build_report_pdf (server.py:828-831) renders `<link href=\"#page={page}\">Allegato pagina {page}</link>` inside a reportlab Paragraph. reportlab treats `href` starting with `#` as an INTERNAL anchor name lookup — it tries to resolve a destination named 'page=2' and raises `ValueError: format not resolved, probably missing URL scheme or undefined destination target for 'page=2'` at doc.build(). Note: _compute_page_map happens to work because it calls _build_report_pdf with page_map={} (no link emitted). The crash only occurs in _build_combined_pdf's SECOND call to _build_report_pdf with the real page_map. Fix options (A) emit plain text 'Allegato pagina N' without <link> — simplest, satisfies review req #6 fallback 'string present on first page'; (B) register named destinations via reportlab bookmarkPage + <link href=\"#dest_name\">; (C) build the Paragraph with an external URI like `<a href=\"{download_url}#page={page}\">` (reportlab accepts http(s) scheme).",
+        "priority": "CRITICAL"
+      }
+    ],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pdf_report.py",
+    "/app/test_reports/pytest/pdf_report.xml"
+  ],
+  "action_items": [
+    "FIX _build_report_pdf (server.py around line 828-831): the reportlab Paragraph `<link href=\"#page={page}\">` fails doc.build() because reportlab resolves `#...` as an internal destination name, not as a URL fragment. Simplest fix: emit the label as plain text (no <link>) — review req #6 explicitly allows 'at least the string Allegato pagina N present'. Alternative: use the external download URL (needs download_url to be known at _build_report_pdf call time — currently it's generated AFTER the PDF).",
+    "After fix, re-run `pytest /app/backend/tests/test_pdf_report.py -n 0 -v` and verify: close returns 200 with download_url ending .pdf, GET /api/public/download/{token} returns 'application/pdf' with magic bytes '%PDF', combined PDF page count >= 1 + numero_allegati, bonifico wording per direction (3 cases), resend-email also returns PDF (not ZIP)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:828-831 — reportlab Paragraph `<link href=\"#page={page}\">...</link>` is parsed as internal named-destination lookup (reportlab/platypus/paraparser.py: '#name' means jump to named anchor). PDF viewers interpret the OpenAction fragment `#page=N` but reportlab's hyperlink model is NOT about URL fragments: it emits GoTo actions keyed by registered destination names (bookmarkPage/outlineAdd). As no destination is registered with the literal name 'page=2' etc, doc.build() raises ValueError. This is a hard crash, not a warning.",
+    "server.py:951-973 _compute_page_map — the empty-map first call to _build_report_pdf masks the bug during page counting (no <link> emitted). This is why report-html works. The REAL call (line 981) with real page_map triggers the crash.",
+    "server.py:1106 — exception from _build_combined_pdf is unhandled → bubbles as 500. Even once fixed, consider try/except so a single bad attachment doesn't fail the whole close. The current implementation already has try/except around individual appends (lines 994-1001), but not around the _build_report_pdf call.",
+    "server.py:1107 variable name `zip_bytes` is now misleading (holds a PDF). Rename to `pdf_bytes` for readability.",
+    "server.py:1110 — Content-Disposition / filename ends with .pdf — correct.",
+    "server.py:662-672 _bonifico_summary_line — correct Italian wording for 3 cases; however uses `escape()` on parent names which output HTML entities (e.g., 'O'Brien' → 'O&#x27;Brien'). This is correct for HTML output but is ALSO being embedded in the PDF (reportlab Paragraph) where entities render literally — not a regression, pre-existing in _build_report_pdf.",
+    "server.py:540-558 report-html endpoint — calls _compute_page_map on every request (which internally calls _build_report_pdf). This is expensive (full reportlab render) just to count pages. Consider memoizing page_map on the block document OR separating a lightweight page-count estimator."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_pdf_report.py (new — 14 tests, 6 classes)"
+  ],
+  "success_rate": {
+    "backend": "36% on new pdf_report suite (5/14). The 9 failures all trace back to ONE critical bug in _build_report_pdf. HTML preview changes work (5/5 passing). PDF/close/resend-email pipeline is COMPLETELY BROKEN (0/9 passing).",
+    "frontend": "not tested (backend-only request per review_request.testing_type)"
+  },
+  "seed_data_creation": "test_pdf_report.py seeds 4 users (user_pdf_P1/P2/NONE/PREVIEW) with session tokens, configs (parent1_email='delivered@resend.dev' to allow Resend to accept the message), and creates one 2026-03 block per user via API with 2 expenses (1 with PNG attachment, 1 without). All idempotent via delete_many+insert_one at module scope. Teardown cleans users, user_sessions, configs, blocks, email_downloads, email_rate_log for these 4 user_ids. Also performed a manual cleanup script after the test run — verified 0 docs remain for the 4 test user_ids across all 6 collections.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "BASE_URL from frontend/.env EXPO_PUBLIC_BACKEND_URL. The pytest.ini forces `-n 2 --dist loadscope` via xdist — override with `-n 0` for serial (not `-p no:xdist` which errors). Serial is REQUIRED because module-scope seed uses delete_many+insert_one with unique index on users.email. CRITICAL BUG currently blocks close/resend-email with 500 — see action_items. Once fixed, the 9 failing tests should pass without modification. The test exercises 3 distinct users for the 3 bonifico directions to avoid rate-limit collisions (close is 10/hour per user).",
+  "rca_of_issue": "ROOT CAUSE: server.py:828-831 (_build_report_pdf). The reportlab Paragraph tag `<link href=\"#page=N\">` is misused. reportlab interprets `href` starting with `#` as a lookup into its internal named-destination registry (populated by bookmarkPage/outlineAdd). The literal name 'page=N' is never registered as a destination, so at doc.build() reportlab raises `ValueError: format not resolved, probably missing URL scheme or undefined destination target for 'page=2'` (seen in /var/log/supervisor/backend.err.log). STACK: reportlab/platypus/paraparser.py → formatter → paragraph.py checks `if f is None: raise ValueError(...)`. REPRODUCTION: POST /api/blocks/{bid}/close with any block that has at least one expense whose attachment_data is non-null and whose expense_id ends up in _compute_page_map → 500. MITIGATION (simplest): remove the <link>...</link> wrapper in the att_para Paragraph and just set `att_para = f'Allegato pagina {page}'` (plain string accepted by reportlab Table). This satisfies review req #6's fallback clause: 'at least the string Allegato pagina N present in the extracted text of the first page'. The HTML preview already uses the external download_url + #page=N fragment for a clickable PDF link, so UX is preserved."
+}

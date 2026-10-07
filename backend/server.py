@@ -539,7 +539,7 @@ async def get_block(block_id: str, user=Depends(get_current_user)):
 
 @api.get("/blocks/{block_id}/report-html")
 async def get_report_html(block_id: str, user=Depends(get_current_user)):
-    """Anteprima HTML del report: ritorna il markup che viene zippato per l'email."""
+    """Anteprima HTML del report: ritorna il markup che viene allegato (prima pagina del PDF)."""
     cfg = await db.configs.find_one({"user_id": user["user_id"]}, {"_id": 0})
     if not cfg:
         raise HTTPException(status_code=400, detail="Configurazione mancante")
@@ -549,7 +549,12 @@ async def get_report_html(block_id: str, user=Depends(get_current_user)):
     if not blk:
         raise HTTPException(status_code=404, detail="Blocco non trovato")
     totals = _compute_totals(blk.get("expenses", []), cfg.get("default_pct_parent1", 50.0))
-    html = _build_report_html(cfg, blk, totals)
+    page_map = _compute_page_map(cfg, blk, totals)
+    html = _build_report_html(
+        cfg, blk, totals,
+        page_map=page_map,
+        download_url=blk.get("last_download_url") or None,
+    )
     return Response(content=html, media_type="text/html; charset=utf-8")
 
 
@@ -654,13 +659,47 @@ def _format_money(v: float) -> str:
     return f"€ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-def _build_report_html(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[str, Any]) -> str:
+def _bonifico_summary_line(cfg: Dict[str, Any], bon: Optional[Dict[str, Any]]) -> str:
+    """Testo descrittivo del bonifico in base al saldo/direzione."""
+    direction = (bon or {}).get("bonifico_direction") or "none"
+    amount = float((bon or {}).get("bonifico_amount") or 0)
     p1 = escape(cfg["parent1_name"])
     p2 = escape(cfg["parent2_name"])
+    if direction == "parent1_to_parent2" and amount > 0:
+        return f"Bonifico effettuato da {p1}"
+    if direction == "parent2_to_parent1" and amount > 0:
+        return f"Rimborso a carico di {p2}"
+    return "Nessun bonifico da effettuare"
+
+
+def _build_report_html(
+    cfg: Dict[str, Any],
+    blk: Dict[str, Any],
+    totals: Dict[str, Any],
+    page_map: Optional[Dict[str, int]] = None,
+    download_url: Optional[str] = None,
+) -> str:
+    p1 = escape(cfg["parent1_name"])
+    p2 = escape(cfg["parent2_name"])
+    page_map = page_map or {}
     rows = ""
     for i, e in enumerate(blk["expenses"], 1):
         paid_name = p1 if e.get("paid_by") == "parent1" else p2
-        att = "Sì" if e.get("attachment_data") else "No"
+        # Colonna allegato: label cliccabile se presente, cella vuota altrimenti
+        att_cell = ""
+        if e.get("attachment_data"):
+            page = page_map.get(e.get("expense_id"))
+            if page:
+                label = f"Allegato pagina {page}"
+                if download_url:
+                    link = f"{download_url}#page={page}"
+                    att_cell = (
+                        f'<a href="{escape(link, quote=True)}" '
+                        f'style="color:#5B8266;font-weight:600;text-decoration:underline">'
+                        f"{escape(label)}</a>"
+                    )
+                else:
+                    att_cell = escape(label)
         rows += (
             f"<tr><td>{i}</td>"
             f"<td>{escape(e.get('date',''))}</td>"
@@ -669,7 +708,7 @@ def _build_report_html(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[st
             f"<td>{escape(paid_name)}</td>"
             f"<td style='text-align:right'>{e.get('pct_parent1',0):.0f}%</td>"
             f"<td style='text-align:right'>{e.get('pct_parent2',0):.0f}%</td>"
-            f"<td>{att}</td></tr>"
+            f"<td>{att_cell}</td></tr>"
         )
     saldo = totals["saldo"]
     if saldo > 0.009:
@@ -678,15 +717,22 @@ def _build_report_html(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[st
         saldo_text = f"{p1} deve a {p2}: <strong>{_format_money(abs(saldo))}</strong>"
     else:
         saldo_text = "Nessun saldo dovuto"
+
     bonifico = blk.get("bonifico")
     bonifico_html = ""
     if bonifico:
+        line = _bonifico_summary_line(cfg, bonifico)
+        extra = ""
+        if float(bonifico.get("bonifico_amount") or 0) > 0:
+            extra = (
+                f"<br>Data: {escape(bonifico.get('bonifico_date',''))}"
+                f"<br>Importo: {_format_money(float(bonifico.get('bonifico_amount',0)))}"
+            )
+            if bonifico.get("bonifico_note"):
+                extra += f"<br>Note: {escape(bonifico.get('bonifico_note') or '')}"
         bonifico_html = (
             f"<h3>Bonifico di saldo</h3>"
-            f"<p>Data: {escape(bonifico.get('bonifico_date',''))}<br>"
-            f"Importo: {_format_money(float(bonifico.get('bonifico_amount',0)))}<br>"
-            f"Direzione: {escape(bonifico.get('bonifico_direction',''))}<br>"
-            f"Note: {escape(bonifico.get('bonifico_note') or '')}</p>"
+            f"<p>{line}{extra}</p>"
         )
     html = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>{escape(blk['label'])}</title>
@@ -722,38 +768,257 @@ def _safe_filename(name: str) -> str:
     return name[:80] or "file"
 
 
-def _build_zip(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[str, Any]) -> bytes:
+# ---------- PDF combinato: report + allegati -----------------------------
+def _build_report_pdf(
+    cfg: Dict[str, Any],
+    blk: Dict[str, Any],
+    totals: Dict[str, Any],
+    page_map: Optional[Dict[str, int]] = None,
+) -> bytes:
+    """Costruisce il PDF del riepilogo mensile (prime pagine del PDF combinato)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib import colors as rl_colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import mm
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle,
+    )
+
+    page_map = page_map or {}
     buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        html = _build_report_html(cfg, blk, totals)
-        zf.writestr("report.html", html)
-        for i, e in enumerate(blk.get("expenses", []), 1):
-            if e.get("attachment_data"):
-                try:
-                    raw = base64.b64decode(e["attachment_data"])
-                    ext = ""
-                    name = e.get("attachment_name") or ""
-                    if "." in name:
-                        ext = "." + name.rsplit(".", 1)[-1].lower()
-                    elif e.get("attachment_mime", "").startswith("image/"):
-                        ext = "." + e["attachment_mime"].split("/")[-1]
-                    elif e.get("attachment_mime") == "application/pdf":
-                        ext = ".pdf"
-                    filename = f"spese/{i:02d}_{_safe_filename(e.get('description','spesa'))}{ext}"
-                    zf.writestr(filename, raw)
-                except Exception as ex:
-                    logger.warning(f"attach skip: {ex}")
-        for i, a in enumerate(blk.get("closure_attachments", []), 1):
-            if a.get("data"):
-                try:
-                    raw = base64.b64decode(a["data"])
-                    name = a.get("name") or f"allegato_{i}"
-                    filename = f"chiusura/{i:02d}_{_safe_filename(name)}"
-                    zf.writestr(filename, raw)
-                except Exception as ex:
-                    logger.warning(f"closure attach skip: {ex}")
+    doc = SimpleDocTemplate(
+        buf, pagesize=A4,
+        leftMargin=15 * mm, rightMargin=15 * mm,
+        topMargin=15 * mm, bottomMargin=15 * mm,
+        title=blk.get("label", "Riepilogo"),
+    )
+    styles = getSampleStyleSheet()
+    h1 = ParagraphStyle(
+        "h1", parent=styles["Heading1"],
+        textColor=rl_colors.HexColor("#5B8266"), spaceAfter=4,
+    )
+    body = ParagraphStyle("body", parent=styles["BodyText"], fontSize=10)
+    small = ParagraphStyle(
+        "small", parent=styles["BodyText"], fontSize=9,
+        textColor=rl_colors.HexColor("#737A74"),
+    )
+    link_style = ParagraphStyle(
+        "link", parent=styles["BodyText"], fontSize=9,
+        textColor=rl_colors.HexColor("#5B8266"),
+    )
+
+    p1 = cfg["parent1_name"]
+    p2 = cfg["parent2_name"]
+    story: List[Any] = []
+    story.append(Paragraph(escape(blk.get("label", "Riepilogo")), h1))
+    story.append(Paragraph(
+        f"<b>Genitore 1:</b> {escape(p1)} &nbsp;·&nbsp; <b>Genitore 2:</b> {escape(p2)}", body))
+    story.append(Spacer(1, 8))
+
+    rows: List[List[Any]] = [[
+        "#", "Data", "Descrizione", "Importo",
+        "Pagato da", f"% {p1}", f"% {p2}", "Allegato",
+    ]]
+    for i, e in enumerate(blk.get("expenses", []), 1):
+        paid_name = p1 if e.get("paid_by") == "parent1" else p2
+        att_para: Any = ""
+        if e.get("attachment_data"):
+            page = page_map.get(e.get("expense_id"))
+            if page:
+                # Nel PDF: solo testo plain (reportlab non supporta #page=N come anchor);
+                # il link cliccabile è disponibile nell'HTML di anteprima.
+                att_para = Paragraph(f"Allegato pagina {page}", link_style)
+        rows.append([
+            str(i),
+            e.get("date", ""),
+            Paragraph(escape(e.get("description", "")), body),
+            _format_money(float(e.get("amount", 0))),
+            paid_name,
+            f"{int(e.get('pct_parent1', 0))}%",
+            f"{int(e.get('pct_parent2', 0))}%",
+            att_para,
+        ])
+    if len(rows) == 1:
+        rows.append(["", "", "Nessuna spesa", "", "", "", "", ""])
+
+    tbl = Table(
+        rows,
+        colWidths=[8 * mm, 20 * mm, 48 * mm, 22 * mm, 25 * mm, 16 * mm, 16 * mm, 25 * mm],
+        repeatRows=1,
+    )
+    tbl.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), rl_colors.HexColor("#5B8266")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), rl_colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 9),
+        ("GRID", (0, 0), (-1, -1), 0.3, rl_colors.HexColor("#D1C9BC")),
+        ("ALIGN", (3, 1), (3, -1), "RIGHT"),
+        ("ALIGN", (5, 1), (6, -1), "RIGHT"),
+        ("ROWBACKGROUNDS", (0, 1), (-1, -1), [rl_colors.white, rl_colors.HexColor("#F4EFE6")]),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+    ]))
+    story.append(tbl)
+
+    story.append(Spacer(1, 10))
+    story.append(Paragraph(
+        f"<b>Totale spese:</b> {_format_money(totals['total'])}", body))
+    story.append(Paragraph(
+        f"<b>Quota {escape(p1)}:</b> {_format_money(totals['quota_parent1'])} &nbsp;·&nbsp; "
+        f"<b>Quota {escape(p2)}:</b> {_format_money(totals['quota_parent2'])}", body))
+    story.append(Paragraph(
+        f"<b>Pagato da {escape(p1)}:</b> {_format_money(totals['paid_parent1'])} &nbsp;·&nbsp; "
+        f"<b>Pagato da {escape(p2)}:</b> {_format_money(totals['paid_parent2'])}", body))
+
+    saldo = totals["saldo"]
+    if saldo > 0.009:
+        saldo_text = f"<b>{escape(p2)} deve a {escape(p1)}: {_format_money(saldo)}</b>"
+    elif saldo < -0.009:
+        saldo_text = f"<b>{escape(p1)} deve a {escape(p2)}: {_format_money(abs(saldo))}</b>"
+    else:
+        saldo_text = "<b>Nessun saldo dovuto</b>"
+    story.append(Spacer(1, 6))
+    story.append(Paragraph(saldo_text, body))
+
+    bonifico = blk.get("bonifico")
+    if bonifico:
+        line = _bonifico_summary_line(cfg, bonifico)
+        story.append(Spacer(1, 10))
+        story.append(Paragraph("<b>Bonifico di saldo</b>", body))
+        story.append(Paragraph(line, body))
+        if float(bonifico.get("bonifico_amount") or 0) > 0:
+            story.append(Paragraph(
+                f"Data: {escape(bonifico.get('bonifico_date',''))} &nbsp;·&nbsp; "
+                f"Importo: {_format_money(float(bonifico.get('bonifico_amount', 0)))}",
+                small))
+            if bonifico.get("bonifico_note"):
+                story.append(Paragraph(f"Note: {escape(bonifico.get('bonifico_note') or '')}", small))
+
+    doc.build(story)
     buf.seek(0)
     return buf.read()
+
+
+def _image_to_pdf_page(data: bytes, mime: str, caption: Optional[str] = None) -> bytes:
+    """Costruisce un PDF A4 di una pagina con l'immagine centrata (migliore qualità/dimensione)."""
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.utils import ImageReader
+
+    buf = io.BytesIO()
+    c = canvas.Canvas(buf, pagesize=A4)
+    pw, ph = A4
+    margin = 10 * mm
+    try:
+        img = ImageReader(io.BytesIO(data))
+        iw, ih = img.getSize()
+    except Exception:
+        img, iw, ih = None, 0, 0
+    if img and iw > 0 and ih > 0:
+        avail_w = pw - 2 * margin
+        avail_h = ph - 2 * margin - (12 if caption else 0)
+        ratio = min(avail_w / iw, avail_h / ih)
+        w = iw * ratio
+        h = ih * ratio
+        x = (pw - w) / 2
+        y = margin + (12 if caption else 0) + (avail_h - h) / 2
+        c.drawImage(img, x, y, width=w, height=h,
+                    preserveAspectRatio=True, mask="auto")
+    if caption:
+        c.setFont("Helvetica", 9)
+        c.setFillColorRGB(0.45, 0.48, 0.46)
+        c.drawString(margin, margin, caption[:200])
+    c.showPage()
+    c.save()
+    return buf.getvalue()
+
+
+def _count_pdf_pages(data: bytes) -> int:
+    """Numero di pagine di un PDF (0 se non parsabile)."""
+    try:
+        from pypdf import PdfReader
+        return len(PdfReader(io.BytesIO(data)).pages)
+    except Exception:
+        return 0
+
+
+def _compute_page_map(
+    cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[str, Any]
+) -> Dict[str, int]:
+    """Mappa expense_id → prima pagina dell'allegato nel PDF combinato (1-based)."""
+    report_pdf = _build_report_pdf(cfg, blk, totals, page_map={})
+    report_pages = _count_pdf_pages(report_pdf) or 1
+    page_map: Dict[str, int] = {}
+    cur = report_pages + 1
+    for e in blk.get("expenses", []):
+        if not e.get("attachment_data"):
+            continue
+        try:
+            raw = base64.b64decode(e["attachment_data"])
+        except Exception:
+            continue
+        mime = (e.get("attachment_mime") or "").lower()
+        page_map[e["expense_id"]] = cur
+        if mime == "application/pdf":
+            pages = _count_pdf_pages(raw) or 1
+            cur += pages
+        else:
+            cur += 1
+    return page_map
+
+
+def _build_combined_pdf(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[str, Any]) -> bytes:
+    """Costruisce un unico PDF: riepilogo + tutti gli allegati (spese + chiusura)."""
+    from pypdf import PdfReader, PdfWriter
+
+    page_map = _compute_page_map(cfg, blk, totals)
+    report_pdf = _build_report_pdf(cfg, blk, totals, page_map=page_map)
+    writer = PdfWriter()
+    writer.append(fileobj=io.BytesIO(report_pdf))
+
+    for e in blk.get("expenses", []):
+        if not e.get("attachment_data"):
+            continue
+        try:
+            raw = base64.b64decode(e["attachment_data"])
+        except Exception:
+            continue
+        mime = (e.get("attachment_mime") or "").lower()
+        caption = f"Spesa: {e.get('description','')}"
+        try:
+            if mime == "application/pdf":
+                writer.append(fileobj=io.BytesIO(raw))
+            else:
+                pdf_bytes = _image_to_pdf_page(raw, mime, caption)
+                writer.append(fileobj=io.BytesIO(pdf_bytes))
+        except Exception as ex:
+            logger.warning(f"skip expense attachment: {ex}")
+
+    for a in blk.get("closure_attachments", []) or []:
+        if not a.get("data"):
+            continue
+        try:
+            raw = base64.b64decode(a["data"])
+        except Exception:
+            continue
+        mime = (a.get("mime") or "").lower()
+        caption = f"Chiusura: {a.get('name','')}"
+        try:
+            if mime == "application/pdf":
+                writer.append(fileobj=io.BytesIO(raw))
+            else:
+                pdf_bytes = _image_to_pdf_page(raw, mime, caption)
+                writer.append(fileobj=io.BytesIO(pdf_bytes))
+        except Exception as ex:
+            logger.warning(f"skip closure attachment: {ex}")
+
+    out = io.BytesIO()
+    writer.write(out)
+    return out.getvalue()
 
 
 def _email_body(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[str, Any], download_url: str) -> str:
@@ -782,13 +1047,13 @@ def _email_body(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[str, Any]
             f'<a href="{escape(download_url, quote=True)}" '
             f'style="display:inline-block;padding:12px 20px;background:#5B8266;'
             f'color:#ffffff;text-decoration:none;border-radius:12px;font-weight:600">'
-            f'Scarica il riepilogo (ZIP)</a></p>'
+            f'Scarica il riepilogo (PDF)</a></p>'
             f'<p style="font-size:12px;color:#737A74">Il link è valido per '
             f'{DOWNLOAD_TTL_DAYS} giorni.</p>'
         )
     return f"""<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;background:#FDFBF7">
 <h2 style="color:#5B8266;margin:0 0 12px 0">{escape(blk['label'])}</h2>
-<p>In allegato trovi il riepilogo completo delle spese extra del mese (report + eventuali scontrini) scaricabile dal link qui sotto.</p>
+<p>Qui sotto il link per scaricare il PDF del riepilogo mensile (report + eventuali scontrini e ricevute).</p>
 <p><strong>Totale spese:</strong> {_format_money(totals['total'])}<br>
 <strong>Quota {p1}:</strong> {_format_money(totals['quota_parent1'])}<br>
 <strong>Quota {p2}:</strong> {_format_money(totals['quota_parent2'])}</p>
@@ -836,19 +1101,19 @@ async def close_block(
     blk["bonifico"] = bonifico
     blk["closure_attachments"] = closure_attachments
 
-    zip_bytes = _build_zip(cfg, blk, totals)
+    zip_bytes = _build_combined_pdf(cfg, blk, totals)
     zip_b64 = base64.b64encode(zip_bytes).decode("ascii")
     subject = blk["label"]
     recipients = [cfg["parent1_email"], cfg["parent2_email"]]
-    zip_name = _safe_filename(blk["label"]).replace(" ", "_") + ".zip"
+    pdf_name = _safe_filename(blk["label"]).replace(" ", "_") + ".pdf"
 
     base_url = _public_base_url(request)
     download_url = ""
     if base_url:
         download_url = await _create_download_link(
             user_id=user["user_id"],
-            filename=zip_name,
-            mime="application/zip",
+            filename=pdf_name,
+            mime="application/pdf",
             data_b64=zip_b64,
             base_url=base_url,
         )
@@ -901,19 +1166,19 @@ async def resend_email_block(
     if not blk:
         raise HTTPException(status_code=404, detail="Blocco non trovato")
     totals = _compute_totals(blk.get("expenses", []), cfg.get("default_pct_parent1", 50.0))
-    zip_bytes = _build_zip(cfg, blk, totals)
-    zip_b64 = base64.b64encode(zip_bytes).decode("ascii")
+    pdf_bytes = _build_combined_pdf(cfg, blk, totals)
+    pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
     subject = blk["label"]
-    zip_name = _safe_filename(blk["label"]).replace(" ", "_") + ".zip"
+    pdf_name = _safe_filename(blk["label"]).replace(" ", "_") + ".pdf"
 
     base_url = _public_base_url(request)
     download_url = ""
     if base_url:
         download_url = await _create_download_link(
             user_id=user["user_id"],
-            filename=zip_name,
-            mime="application/zip",
-            data_b64=zip_b64,
+            filename=pdf_name,
+            mime="application/pdf",
+            data_b64=pdf_b64,
             base_url=base_url,
         )
     html = _email_body(cfg, blk, totals, download_url)

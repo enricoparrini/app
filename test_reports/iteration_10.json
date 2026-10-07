@@ -1,0 +1,43 @@
+{
+  "summary": "PDF-report fix VERIFIED. Re-ran /app/backend/tests/test_pdf_report.py: ALL 14 TESTS PASS (14/14). The reportlab ValueError on Paragraph <link href='#page=N'> is fully resolved by emitting plain-text 'Allegato pagina N' inside the PDF while keeping the clickable <a href='<download_url>#page=N'> anchor in the HTML preview after close. Verified: (1) POST /api/blocks/{id}/close returns 200 with download_url to a PDF; (2) GET /api/public/download/{token} serves application/pdf, magic bytes '%PDF', PdfReader counts pages >= 1 + numero_allegati; (3) report-html contains anchor <a href='...#page=N'>Allegato pagina N</a> AFTER close, plain text BEFORE close; (4) Bonifico wording correct for all 3 directions (parent1_to_parent2 → 'Bonifico effettuato da Marco'; parent2_to_parent1 → 'Rimborso a carico di Elena'; none → 'Nessun bonifico da effettuare'); (5) resend-email re-creates a PDF (not ZIP). Full regression run (98 tests): 90 passed, 1 skipped, 8 failed. Of the 8 failures: 6 are OBSOLETE pre-existing tests that assert the OLD ZIP/'Sì'-'No' contract (test_closure_attachments.py, test_download_link_fix.py, test_report_html.py) — they contradict the intentional ZIP→PDF migration and must be deleted or rewritten by main agent. The remaining 2 (test_security_fixes.py TestRateLimitExportEmail / TestRateLimitIsolation) fail with Cloudflare 502 on POST /api/export/year/2027/email — pre-existing flakiness (backend logs show no crash, only Resend 422 'undeliverable_recipient' which is non-fatal; the 502 is an edge/proxy gateway timeout, not caused by this iteration's fix).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/export/year/{year}/email",
+        "issue": "Returns Cloudflare 502 bad gateway intermittently (pre-existing). Likely upstream timeout: endpoint renders 12 monthly PDFs sequentially + Resend call. Backend logs show no crash — proxy times out before response. Causes test_security_fixes::TestRateLimitExportEmail + TestRateLimitIsolation to fail on first call. Mitigate by: (a) running PDF generation concurrently, or (b) returning 202 + background task."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_pdf_report.py",
+    "/app/test_reports/pytest/test_pdf_report_iter10.xml",
+    "/app/test_reports/pytest/full_regression_iter10.xml"
+  ],
+  "action_items": [
+    "DELETE or REWRITE 3 obsolete test files that assert the old ZIP/'Sì'-'No' contract (6 failing tests, intentionally broken by the ZIP→PDF migration): (a) /app/backend/tests/test_closure_attachments.py — TestCloseWithAttachments::test_close_with_png_and_pdf_attachments and TestCloseBackCompat::test_close_without_attachments_field assert content-type 'application/zip' and zipfile.ZipFile parsing; now content-type is 'application/pdf'. (b) /app/backend/tests/test_download_link_fix.py — TestPublicDownloadEndpoint::test_valid_token_serves_zip_binary and TestResendEmailNewToken::test_resend_creates_new_download_record_old_still_valid assert 'application/zip'. (c) /app/backend/tests/test_report_html.py — TestReportHtmlSuccess::test_shows_attachment_as_boolean_not_base64 and ::test_html_matches_build_report_html_output assert 'Sì'/'<td>No</td>' labels; HTML now uses 'Allegato pagina N'. Coverage for the new behavior is already provided by test_pdf_report.py.",
+    "OPTIONAL: Investigate the 502 on POST /api/export/year/{year}/email. Backend doesn't crash (no stack trace in /var/log/supervisor/backend.err.log, only Resend 422 'undeliverable_recipient' which is handled); the 502 is a Cloudflare gateway timeout. Consider making the handler non-blocking or splitting PDF generation into a background task so the HTTP response returns within the proxy's timeout window."
+  ],
+  "critical_code_review_comments": [
+    "server.py _build_report_pdf — the previous `<link href=\"#page=N\">` was replaced with a plain-text Paragraph. Verified by test_combined_pdf_first_page_contains_allegato_pagina (PdfReader.extract_text contains 'Allegato pagina N' on first/second page). HTML preview still emits <a href='<download_url>#page=N'> after close via _bonifico/report HTML template — verified by test_preview_after_close_has_anchor_link.",
+    "pytest.ini still forces `-n 2 --dist loadscope` through xdist. test_pdf_report.py's module-scope seed uses delete_many+insert_one against a unique index on users.email; when xdist spawns 2 workers they BOTH re-run the module fixture → DuplicateKeyError. Workaround used: `pytest -n 0`. Consider marking the test file @pytest.mark.serial or adding `pytest_collection_modifyitems` to pin xdist dist='loadfile' for this file.",
+    "server.py:1107 variable `zip_bytes` holds a PDF now — rename for clarity (same comment as iteration_9).",
+    "server.py _bonifico_summary_line uses escape() on parent names which emits HTML entities (e.g., O&#x27;Brien). Fine for HTML preview, but these entities are now also embedded verbatim in the PDF Paragraph (reportlab accepts HTML entities so renders OK) — low priority but worth noting."
+  ],
+  "updated_files": [],
+  "success_rate": {
+    "backend": "test_pdf_report.py: 14/14 (100%). Full regression: 90/99 pass + 1 skipped = 91% (8 failures: 6 obsolete tests to be deleted, 2 flaky Cloudflare 502s on export email).",
+    "frontend": "not tested (backend-only request)"
+  },
+  "seed_data_creation": "test_pdf_report.py seeds 4 users (user_pdf_P1/P2/NONE/PREVIEW) with session tokens and configs (parent1_email='delivered@resend.dev'), creates one 2026-03 block per user with 2 expenses (1 w/ PNG attachment, 1 w/o). Idempotent via delete_many+insert_one. Teardown via module fixture cleanup (verified on exit).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Review request fully satisfied: all 14 tests in test_pdf_report.py pass with `pytest -n 0`. The 6 obsolete failures in test_closure_attachments.py, test_download_link_fix.py, test_report_html.py are NOT regressions caused by this iteration; they are stale tests from the pre-ZIP→PDF era asserting the old contract. Main agent should remove or rewrite them. The 2 export-email 502s are pre-existing environmental (Cloudflare proxy timeout), unrelated to the PDF fix. Always run this suite with `-n 0` because pytest.ini forces xdist -n 2 and the module-scope seed is not xdist-safe.",
+  "rca_of_issue": "Previous iteration (iter_9) RCA was correct: reportlab Paragraph <link href='#page=N'> raises ValueError because reportlab treats '#...' as an internal named-destination lookup, and no destination was registered with that literal name. The fix (iteration_10) emits the label as a plain-text Paragraph inside the PDF — satisfying the fallback review requirement 'at least the string Allegato pagina N present'. The clickable <a href='<download_url>#page=N'> anchor is still produced in the HTML preview after close (last_download_url is saved on the block document and read by report-html template). Confirmed via: PdfReader.extract_text() → 'Allegato pagina N' on first/second page; HTML preview contains <a href='.../api/public/download/{token}#page=N'>Allegato pagina N</a> only after close. End-to-end UX preserved: user opens HTML in browser, clicks the anchor, the PDF opens at the right page via the PDF viewer's native #page=N fragment."
+}

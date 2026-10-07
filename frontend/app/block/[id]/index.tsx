@@ -80,7 +80,7 @@ export default function BlockDetail() {
     setBusy(true);
     try {
       await api.resendEmail(id!);
-      Alert.alert("Email inviata", "Riepilogo re-inviato al genitore 1.");
+      Alert.alert("Email inviata", "Mail inviata");
     } catch (e: any) {
       Alert.alert("Errore", e.message || "Invio fallito");
     } finally {
