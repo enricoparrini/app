@@ -91,8 +91,17 @@ async def send_email(
     subject: str,
     html: str,
     attachments: Optional[List[Dict[str, str]]] = None,
-) -> Optional[str]:
-    _assert_safe_email(subject, html)
+) -> Dict[str, Any]:
+    """
+    Invia un'email tramite il proxy Emergent/Resend.
+    Ritorna sempre un dict {"ok": bool, "error": Optional[str], "id": Optional[str]}
+    invece di sollevare eccezioni, così il chiamante può decidere come gestire il fallimento
+    (es. chiudere comunque un blocco anche se l'email non è stata recapitata).
+    """
+    try:
+        _assert_safe_email(subject, html)
+    except ValueError as e:
+        return {"ok": False, "error": str(e), "id": None}
     payload: Dict[str, Any] = {
         "to": to_list,
         "subject": subject,
@@ -108,14 +117,26 @@ async def send_email(
                 headers={"X-Email-Key": EMAIL_KEY},
                 json=payload,
             )
-        resp.raise_for_status()
-        return resp.json().get("id")
-    except httpx.HTTPStatusError as e:
-        logger.error(f"Email send failed: {e.response.status_code} {e.response.text}")
-        raise HTTPException(status_code=502, detail="Invio email fallito")
+        if resp.status_code >= 400:
+            # Prova a estrarre il messaggio di errore dal body JSON di Resend
+            friendly = f"HTTP {resp.status_code}"
+            try:
+                body = resp.json()
+                if isinstance(body, dict):
+                    friendly = (
+                        body.get("message")
+                        or body.get("error")
+                        or body.get("detail")
+                        or friendly
+                    )
+            except Exception:
+                pass
+            logger.error(f"Email send failed: {resp.status_code} {resp.text}")
+            return {"ok": False, "error": friendly, "id": None}
+        return {"ok": True, "error": None, "id": resp.json().get("id")}
     except Exception as e:
         logger.error(f"Email send error: {e}")
-        raise HTTPException(status_code=500, detail="Invio email fallito")
+        return {"ok": False, "error": str(e), "id": None}
 
 
 # ---------------------------- Models ----------------------------
@@ -633,25 +654,33 @@ async def close_block(block_id: str, payload: CloseBlockIn, user=Depends(get_cur
     recipients = [cfg["parent1_email"], cfg["parent2_email"]]
     zip_name = _safe_filename(blk["label"]).replace(" ", "_") + ".zip"
 
-    await send_email(
+    email_res = await send_email(
         to_list=recipients,
         subject=subject,
         html=html,
         attachments=[{"filename": zip_name, "content": zip_b64}],
     )
 
+    set_fields: Dict[str, Any] = {
+        "status": "closed",
+        "closed_at": datetime.now(timezone.utc),
+        "bonifico": bonifico,
+    }
+    if email_res["ok"]:
+        set_fields["email_sent_at"] = datetime.now(timezone.utc)
+        set_fields["email_error"] = None
+    else:
+        set_fields["email_error"] = email_res["error"]
+
     await db.blocks.update_one(
         {"user_id": user["user_id"], "block_id": block_id},
-        {
-            "$set": {
-                "status": "closed",
-                "closed_at": datetime.now(timezone.utc),
-                "bonifico": bonifico,
-                "email_sent_at": datetime.now(timezone.utc),
-            }
-        },
+        {"$set": set_fields},
     )
-    return {"ok": True}
+    return {
+        "ok": True,
+        "email_sent": email_res["ok"],
+        "email_error": email_res["error"],
+    }
 
 
 @api.post("/blocks/{block_id}/resend-email")
@@ -670,12 +699,14 @@ async def resend_email_block(block_id: str, user=Depends(get_current_user)):
     subject = blk["label"]
     html = _email_body(cfg, blk, totals)
     zip_name = _safe_filename(blk["label"]).replace(" ", "_") + ".zip"
-    await send_email(
+    email_res = await send_email(
         to_list=[cfg["parent1_email"]],
         subject=subject,
         html=html,
         attachments=[{"filename": zip_name, "content": zip_b64}],
     )
+    if not email_res["ok"]:
+        raise HTTPException(status_code=502, detail=email_res["error"] or "Invio email fallito")
     return {"ok": True}
 
 
@@ -871,7 +902,6 @@ async def email_year_pdf(year: int, user=Depends(get_current_user)):
         attachments=[{"filename": f"Spese_extra_{year}.pdf", "content": pdf_b64}],
     )
     return {"ok": True}
-
 
 
 @app.on_event("startup")

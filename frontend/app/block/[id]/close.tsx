@@ -74,7 +74,7 @@ export default function CloseBlock() {
 
     setSaving(true);
     try {
-      await api.closeBlock(id!, {
+      const res: any = await api.closeBlock(id!, {
         bonifico_date: bonDate,
         bonifico_amount: bonAmount,
         bonifico_direction: direction,
@@ -82,7 +82,14 @@ export default function CloseBlock() {
       });
       qc.invalidateQueries({ queryKey: ["blocks"] });
       qc.invalidateQueries({ queryKey: ["block", id] });
-      Alert.alert("Blocco chiuso", "Email inviata a entrambi i genitori.");
+      if (res?.email_sent === false) {
+        Alert.alert(
+          "Blocco chiuso, email non inviata",
+          `Il blocco è stato chiuso ma l'invio dell'email è fallito: ${res.email_error || "errore sconosciuto"}.\n\nVerifica l'indirizzo del Genitore 2 nelle impostazioni e usa "Reinvia email" dalla pagina del blocco.`
+        );
+      } else {
+        Alert.alert("Blocco chiuso", "Email inviata a entrambi i genitori.");
+      }
       router.replace(`/block/${id}`);
     } catch (e: any) {
       setErr(e.message || "Errore invio email");
