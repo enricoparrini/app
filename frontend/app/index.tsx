@@ -11,7 +11,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { CheckCircle2, Plus, Settings as SettingsIcon } from "lucide-react-native";
+import { BarChart3, CheckCircle2, Plus, Settings as SettingsIcon } from "lucide-react-native";
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { colors } from "@/src/theme";
@@ -78,14 +78,24 @@ export default function Home() {
           <Text style={styles.hello}>Ciao {cfg.parent1_name?.split(" ")[0] || ""}</Text>
           <Text style={styles.pageTitle}>Spese extra</Text>
         </View>
-        <Pressable
-          testID="open-settings"
-          onPress={() => router.push("/settings")}
-          hitSlop={10}
-          style={styles.iconBtn}
-        >
-          <SettingsIcon color={colors.onSurface} size={22} />
-        </Pressable>
+        <View style={{ flexDirection: "row", gap: 8 }}>
+          <Pressable
+            testID="open-stats"
+            onPress={() => router.push("/stats")}
+            hitSlop={10}
+            style={styles.iconBtn}
+          >
+            <BarChart3 color={colors.onSurface} size={22} />
+          </Pressable>
+          <Pressable
+            testID="open-settings"
+            onPress={() => router.push("/settings")}
+            hitSlop={10}
+            style={styles.iconBtn}
+          >
+            <SettingsIcon color={colors.onSurface} size={22} />
+          </Pressable>
+        </View>
       </View>
 
       {blocksQuery.isLoading ? (
