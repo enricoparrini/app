@@ -1,0 +1,53 @@
+{
+  "summary": "Backend-only verification of the download-link email fix (replace deprecated 'attachments' proxy field with public time-limited download URL). New targeted suite /app/backend/tests/test_download_link_fix.py = 17 tests, all PASSED. Full regression on existing suites (test_quota_backend.py=19, test_close_email_fix.py=5, test_security_fixes.py=20) run alongside: 58 passed, 1 skipped, 2 failed. The 2 failures are PRE-EXISTING flakiness in test_security_fixes.py unrelated to the download-link fix (Resend proxy now rejects sec1@quota.local as 'undeliverable_recipient' → 422 → endpoint raises 502). All 10 features/bugs listed in the review are verified. send_email proxy payload NO LONGER includes 'attachments' (source-code assert + runtime verification). download_url returned by close/resend/export is https://.../api/public/download/<43-char token urlsafe>, scadenza 30 giorni, scaricabile senza auth, con content-type corretto e magic bytes ZIP/PDF. Token invalido → 404. Token scaduto → 404. Rate limits SEC-001 e validazione allegati SEC-002 ancora attivi.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/export/year/{year}/email",
+        "issue": "Pre-existing: test_security_fixes.py seeds user with email 'sec1@quota.local' which Resend proxy now rejects as 'undeliverable_recipient' (HTTP 422), causing the endpoint to return 502. Tests test_export_email_rate_limit and test_user2_not_affected_by_user1_quota fail at line 'assert r.status_code == 200'. NOT caused by the download-link fix. Fix: patch user.email to 'delivered@resend.dev' in test_security_fixes.py before export_email tests (or use Mongo direct patch of configs.parent1_email)."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_download_link_fix.py",
+    "/app/backend/tests/test_quota_backend.py",
+    "/app/backend/tests/test_close_email_fix.py",
+    "/app/backend/tests/test_security_fixes.py",
+    "/app/test_reports/pytest/download_link_fix.xml",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "No fix required for the download-link feature — all 10 review items verified.",
+    "Housekeeping (optional, not a regression): update /app/backend/tests/test_security_fixes.py so the user email used for export_email tests is 'delivered@resend.dev' (or Mongo-patch configs.parent1_email before each test). Current failures are environmental (Resend policy tightened on sec1@quota.local)."
+  ],
+  "critical_code_review_comments": [
+    "_create_download_link uses secrets.token_urlsafe(32) → 43 char base64url (A-Z,a-z,0-9,_,-) which exceeds the 40-char minimum stated in the review. Non-enumerable.",
+    "Public endpoint /api/public/download/{token} correctly checks expires_at manually AND relies on TTL index for cleanup (expireAfterSeconds=0 on expires_at). The app-level expired check guards against the 60s TTL sweep delay.",
+    "send_email() payload = {to, subject, html, from_name} — the 'attachments' key is NOT present (verified both by static source scan and by observing the proxy call). This is the correct fix: previously 'attachments' was silently ignored by the Emergent Resend proxy.",
+    "Base URL for the download link is derived from X-Forwarded-Host / X-Forwarded-Proto (set by ingress). In the preview environment this correctly produces https:// URLs.",
+    "Resend/send flow: for close_block, download link is created regardless of email outcome (even when send_email returns ok=False, the download_url is persisted on the block as 'last_download_url'). Good UX.",
+    "For resend-email and export_year_email, if the email send fails the endpoint raises 502 — but the download record was already inserted. This means a 502 response does NOT give the client the token. Minor UX concern: if the user retries, a NEW token is created each time (orphaned tokens accumulate until TTL cleanup). Not a bug per se; rate limit (5/h for resend, 5/day for export) prevents runaway accumulation.",
+    "No MongoDB _id leaks: find_one calls use projection {_id: 0}. Response headers set Cache-Control: no-store (good — download links should not be cached by proxies).",
+    "Content-Disposition uses _safe_filename to sanitize the filename — correctly guards against header injection.",
+    "Potential enhancement (not required): /api/public/download/{token} could log the download for audit; currently it's silent. Low priority."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_download_link_fix.py (new — 17 tests, 8 classes)"
+  ],
+  "success_rate": {
+    "backend": "100% on new download-link suite (17/17). 97% on full regression (58/60 passing; 2 pre-existing environmental failures in test_security_fixes.py unrelated to this fix).",
+    "frontend": "not tested (backend-only request)"
+  },
+  "seed_data_creation": "test_download_link_fix.py seeds 2 users (user_dl_test_1/2) with sessions (sess_dl_test_1/2) and configs idempotently per module. All data (users, user_sessions, configs, blocks, email_rate_log, email_downloads) wiped on teardown. Final verification: email_downloads=0 and email_rate_log=0 after cleanup. Pre-existing dangling data from previous iterations (10 email_rate_log + 29 email_downloads from test_security_fixes.py / test_quota_backend.py / test_close_email_fix.py) also removed by post-run cleanup script. Remaining 1 user / 2 sessions / 1 config / 2 blocks in Mongo appear to be from live UI usage (not seeded by tests) and were left untouched.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "BASE_URL from frontend/.env EXPO_PUBLIC_BACKEND_URL. Run new suite with: pytest tests/test_download_link_fix.py -n 0 (serial). The suite enforces: (a) token length ≥ 40 chars, (b) base64url charset, (c) https download_url, (d) ZIP magic 'PK', (e) PDF magic '%PDF', (f) 404 on invalid/expired tokens, (g) resend creates NEW token while old one stays valid, (h) rate limits 10/5/5 still enforced, (i) attachment MIME + 3MB size validation still enforced, (j) tokens unique and not sharing 16-char prefix. The 2 failures in test_security_fixes.py (TestRateLimitExportEmail / TestRateLimitIsolation) are environmental: Resend proxy returns 422 'undeliverable_recipient' for sec1@quota.local. These tests should either patch user.email to delivered@resend.dev or Mongo-patch configs.parent1_email. Do NOT modify server.py — the fix is correct and complete.",
+  "rca_of_issue": "N/A — the download-link fix is CONFIRMED WORKING. Observations: (1) close_block response contains download_url: 'https://co-parent-expenses-3.preview.emergentagent.com/api/public/download/<43-char token>', email_sent=true for delivered@resend.dev / false for undeliverable, block always closed. (2) GET /api/public/download/{token} returns 200 + Content-Type application/zip + Content-Disposition attachment + body starts with 'PK' (ZIP magic). (3) GET with bogus token → 404 'File non trovato o scaduto'. (4) GET with expired token (expires_at < now) → 404 'Link scaduto'. (5) resend-email inserts a new email_downloads row — old token from close() remains valid and downloadable. (6) export/year/{year}/email creates a PDF download record with Content-Type application/pdf and body starting with '%PDF'. (7) Rate limits enforced: close 11th→429, resend 6th→429, export_email 6th→429. (8) Attachment validation enforced: application/x-sh→400, 4.2MB payload→413. (9) Server source scan confirms the proxy payload sent in send_email() does NOT contain any 'attachments' key. (10) Tokens are 43-char base64url (secrets.token_urlsafe(32)), unique, non-enumerable."
+}

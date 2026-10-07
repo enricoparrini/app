@@ -6,6 +6,7 @@ import logging
 import zipfile
 import io
 import ipaddress
+import secrets
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import List, Optional, Dict, Any
@@ -13,7 +14,7 @@ from html import escape
 from html.parser import HTMLParser
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Header
+from fastapi import FastAPI, APIRouter, HTTPException, Request, Depends, Header, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, EmailStr
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -152,13 +153,12 @@ async def send_email(
     to_list: List[str],
     subject: str,
     html: str,
-    attachments: Optional[List[Dict[str, str]]] = None,
 ) -> Dict[str, Any]:
     """
     Invia un'email tramite il proxy Emergent/Resend.
-    Ritorna sempre un dict {"ok": bool, "error": Optional[str], "id": Optional[str]}
-    invece di sollevare eccezioni, così il chiamante può decidere come gestire il fallimento
-    (es. chiudere comunque un blocco anche se l'email non è stata recapitata).
+    Il proxy NON supporta allegati inline: i file vanno condivisi tramite link
+    pubblici time-limited (vedi _create_download_link).
+    Ritorna {"ok": bool, "error": Optional[str], "id": Optional[str]}.
     """
     try:
         _assert_safe_email(subject, html)
@@ -170,8 +170,6 @@ async def send_email(
         "html": html,
         "from_name": EMAIL_FROM_NAME,
     }
-    if attachments:
-        payload["attachments"] = attachments
     try:
         async with httpx.AsyncClient(timeout=60) as http:
             resp = await http.post(
@@ -180,7 +178,6 @@ async def send_email(
                 json=payload,
             )
         if resp.status_code >= 400:
-            # Prova a estrarre il messaggio di errore dal body JSON di Resend
             friendly = f"HTTP {resp.status_code}"
             try:
                 body = resp.json()
@@ -199,6 +196,70 @@ async def send_email(
     except Exception as e:
         logger.error(f"Email send error: {e}")
         return {"ok": False, "error": str(e), "id": None}
+
+
+# ---------------------------- Secure download links ----------------------------
+DOWNLOAD_TTL_DAYS = 30
+
+
+def _public_base_url(request: Request) -> str:
+    """Deriva il base URL pubblico dal request (ingress aggiunge X-Forwarded-* in prod)."""
+    host = (
+        request.headers.get("x-forwarded-host")
+        or request.headers.get("host")
+        or ""
+    )
+    proto = request.headers.get("x-forwarded-proto") or "https"
+    return f"{proto}://{host}" if host else ""
+
+
+async def _create_download_link(
+    *,
+    user_id: str,
+    filename: str,
+    mime: str,
+    data_b64: str,
+    base_url: str,
+) -> str:
+    """Crea un record scaricabile pubblicamente tramite token monouso. Il token
+    non è bruteforce-abile (secrets.token_urlsafe 32B)."""
+    token = secrets.token_urlsafe(32)
+    await db.email_downloads.insert_one(
+        {
+            "token": token,
+            "user_id": user_id,
+            "filename": filename,
+            "mime": mime,
+            "data": data_b64,
+            "created_at": datetime.now(timezone.utc),
+            "expires_at": datetime.now(timezone.utc)
+            + timedelta(days=DOWNLOAD_TTL_DAYS),
+        }
+    )
+    # Nota: niente URL con credenziali o query sensibili; solo path + token opaco
+    return f"{base_url}/api/public/download/{token}"
+
+
+@api.get("/public/download/{token}")
+async def public_download(token: str):
+    """Endpoint pubblico (no auth): serve il file associato al token se non scaduto."""
+    rec = await db.email_downloads.find_one({"token": token}, {"_id": 0})
+    if not rec:
+        raise HTTPException(status_code=404, detail="File non trovato o scaduto")
+    exp = rec.get("expires_at")
+    if exp and exp.tzinfo is None:
+        exp = exp.replace(tzinfo=timezone.utc)
+    if exp and exp < datetime.now(timezone.utc):
+        raise HTTPException(status_code=404, detail="Link scaduto")
+    try:
+        payload = base64.b64decode(rec["data"])
+    except Exception:
+        raise HTTPException(status_code=500, detail="Dato corrotto")
+    headers = {
+        "Content-Disposition": f'attachment; filename="{_safe_filename(rec["filename"])}"',
+        "Cache-Control": "no-store",
+    }
+    return Response(content=payload, media_type=rec.get("mime", "application/octet-stream"), headers=headers)
 
 
 # ---------------------------- Models ----------------------------
@@ -663,7 +724,7 @@ def _build_zip(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[str, Any])
     return buf.read()
 
 
-def _email_body(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[str, Any]) -> str:
+def _email_body(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[str, Any], download_url: str) -> str:
     p1 = escape(cfg["parent1_name"])
     p2 = escape(cfg["parent2_name"])
     saldo = totals["saldo"]
@@ -675,27 +736,44 @@ def _email_body(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[str, Any]
         saldo_text = "Nessun saldo dovuto"
     bon = blk.get("bonifico") or {}
     bon_html = ""
-    if bon:
+    if bon and float(bon.get("bonifico_amount", 0)) > 0:
         bon_html = (
             f"<p><strong>Bonifico di saldo</strong><br>"
             f"Data: {escape(bon.get('bonifico_date',''))}<br>"
             f"Importo: {_format_money(float(bon.get('bonifico_amount',0)))}<br>"
             f"Note: {escape(bon.get('bonifico_note') or '-')}</p>"
         )
+    download_html = ""
+    if download_url:
+        download_html = (
+            f'<p style="margin:20px 0">'
+            f'<a href="{escape(download_url, quote=True)}" '
+            f'style="display:inline-block;padding:12px 20px;background:#5B8266;'
+            f'color:#ffffff;text-decoration:none;border-radius:12px;font-weight:600">'
+            f'Scarica il riepilogo (ZIP)</a></p>'
+            f'<p style="font-size:12px;color:#737A74">Il link è valido per '
+            f'{DOWNLOAD_TTL_DAYS} giorni.</p>'
+        )
     return f"""<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;background:#FDFBF7">
 <h2 style="color:#5B8266;margin:0 0 12px 0">{escape(blk['label'])}</h2>
-<p>In allegato trovi il riepilogo completo delle spese extra del mese in formato ZIP (report + eventuali scontrini).</p>
+<p>In allegato trovi il riepilogo completo delle spese extra del mese (report + eventuali scontrini) scaricabile dal link qui sotto.</p>
 <p><strong>Totale spese:</strong> {_format_money(totals['total'])}<br>
 <strong>Quota {p1}:</strong> {_format_money(totals['quota_parent1'])}<br>
 <strong>Quota {p2}:</strong> {_format_money(totals['quota_parent2'])}</p>
 <p>{saldo_text}</p>
 {bon_html}
+{download_html}
 <p style="font-size:12px;color:#737A74;margin-top:24px">Inviato da {escape(EMAIL_FROM_NAME)}. Non chiederemo mai password o dati di pagamento via email.</p>
 </td></tr></table>"""
 
 
 @api.post("/blocks/{block_id}/close")
-async def close_block(block_id: str, payload: CloseBlockIn, user=Depends(get_current_user)):
+async def close_block(
+    block_id: str,
+    payload: CloseBlockIn,
+    request: Request,
+    user=Depends(get_current_user),
+):
     await _check_rate_limit(user["user_id"], "close")
     cfg = await db.configs.find_one({"user_id": user["user_id"]}, {"_id": 0})
     if not cfg:
@@ -715,21 +793,32 @@ async def close_block(block_id: str, payload: CloseBlockIn, user=Depends(get_cur
     zip_bytes = _build_zip(cfg, blk, totals)
     zip_b64 = base64.b64encode(zip_bytes).decode("ascii")
     subject = blk["label"]
-    html = _email_body(cfg, blk, totals)
     recipients = [cfg["parent1_email"], cfg["parent2_email"]]
     zip_name = _safe_filename(blk["label"]).replace(" ", "_") + ".zip"
+
+    base_url = _public_base_url(request)
+    download_url = ""
+    if base_url:
+        download_url = await _create_download_link(
+            user_id=user["user_id"],
+            filename=zip_name,
+            mime="application/zip",
+            data_b64=zip_b64,
+            base_url=base_url,
+        )
+    html = _email_body(cfg, blk, totals, download_url)
 
     email_res = await send_email(
         to_list=recipients,
         subject=subject,
         html=html,
-        attachments=[{"filename": zip_name, "content": zip_b64}],
     )
 
     set_fields: Dict[str, Any] = {
         "status": "closed",
         "closed_at": datetime.now(timezone.utc),
         "bonifico": bonifico,
+        "last_download_url": download_url,
     }
     if email_res["ok"]:
         set_fields["email_sent_at"] = datetime.now(timezone.utc)
@@ -745,11 +834,16 @@ async def close_block(block_id: str, payload: CloseBlockIn, user=Depends(get_cur
         "ok": True,
         "email_sent": email_res["ok"],
         "email_error": email_res["error"],
+        "download_url": download_url,
     }
 
 
 @api.post("/blocks/{block_id}/resend-email")
-async def resend_email_block(block_id: str, user=Depends(get_current_user)):
+async def resend_email_block(
+    block_id: str,
+    request: Request,
+    user=Depends(get_current_user),
+):
     await _check_rate_limit(user["user_id"], "resend")
     cfg = await db.configs.find_one({"user_id": user["user_id"]}, {"_id": 0})
     if not cfg:
@@ -763,13 +857,23 @@ async def resend_email_block(block_id: str, user=Depends(get_current_user)):
     zip_bytes = _build_zip(cfg, blk, totals)
     zip_b64 = base64.b64encode(zip_bytes).decode("ascii")
     subject = blk["label"]
-    html = _email_body(cfg, blk, totals)
     zip_name = _safe_filename(blk["label"]).replace(" ", "_") + ".zip"
+
+    base_url = _public_base_url(request)
+    download_url = ""
+    if base_url:
+        download_url = await _create_download_link(
+            user_id=user["user_id"],
+            filename=zip_name,
+            mime="application/zip",
+            data_b64=zip_b64,
+            base_url=base_url,
+        )
+    html = _email_body(cfg, blk, totals, download_url)
     email_res = await send_email(
         to_list=[cfg["parent1_email"]],
         subject=subject,
         html=html,
-        attachments=[{"filename": zip_name, "content": zip_b64}],
     )
     if not email_res["ok"]:
         raise HTTPException(status_code=502, detail=email_res["error"] or "Invio email fallito")
@@ -939,7 +1043,11 @@ async def export_year_pdf(year: int, user=Depends(get_current_user)):
 
 
 @api.post("/export/year/{year}/email")
-async def email_year_pdf(year: int, user=Depends(get_current_user)):
+async def email_year_pdf(
+    year: int,
+    request: Request,
+    user=Depends(get_current_user),
+):
     """Invia il PDF annuale via email al genitore 1."""
     await _check_rate_limit(user["user_id"], "export_email")
     cfg = await db.configs.find_one({"user_id": user["user_id"]}, {"_id": 0})
@@ -952,22 +1060,46 @@ async def email_year_pdf(year: int, user=Depends(get_current_user)):
     pdf_bytes = _build_year_pdf(cfg, year, blocks)
     pdf_b64 = base64.b64encode(pdf_bytes).decode("ascii")
     subject = f"Riepilogo annuale spese extra {year}"
+
+    base_url = _public_base_url(request)
+    download_url = ""
+    if base_url:
+        download_url = await _create_download_link(
+            user_id=user["user_id"],
+            filename=f"Spese_extra_{year}.pdf",
+            mime="application/pdf",
+            data_b64=pdf_b64,
+            base_url=base_url,
+        )
+    link_html = (
+        f'<p style="margin:20px 0">'
+        f'<a href="{escape(download_url, quote=True)}" '
+        f'style="display:inline-block;padding:12px 20px;background:#5B8266;'
+        f'color:#ffffff;text-decoration:none;border-radius:12px;font-weight:600">'
+        f'Scarica il PDF annuale</a></p>'
+        f'<p style="font-size:12px;color:#737A74">Il link è valido per '
+        f'{DOWNLOAD_TTL_DAYS} giorni.</p>'
+        if download_url
+        else ""
+    )
     html = (
         f'<table role="presentation" width="100%"><tr><td style="padding:24px;'
         f'font-family:Arial,sans-serif;background:#FDFBF7">'
         f'<h2 style="color:#5B8266;margin:0 0 12px 0">Riepilogo annuale {year}</h2>'
-        f'<p>In allegato trovi il PDF con tutte le spese extra di mantenimento del {year}, '
-        f'pronto per la dichiarazione dei redditi (730).</p>'
+        f'<p>Qui sotto il link per scaricare il PDF con tutte le spese extra di '
+        f'mantenimento del {year}, pronto per la dichiarazione dei redditi (730).</p>'
+        f'{link_html}'
         f'<p style="font-size:12px;color:#737A74;margin-top:24px">'
         f'Inviato da {escape(EMAIL_FROM_NAME)}. Non chiederemo mai password o dati di pagamento via email.</p>'
         f'</td></tr></table>'
     )
-    await send_email(
+    email_res = await send_email(
         to_list=[cfg["parent1_email"]],
         subject=subject,
         html=html,
-        attachments=[{"filename": f"Spese_extra_{year}.pdf", "content": pdf_b64}],
     )
+    if not email_res["ok"]:
+        raise HTTPException(status_code=502, detail=email_res["error"] or "Invio email fallito")
     return {"ok": True}
 
 
@@ -981,6 +1113,8 @@ async def startup():
     await db.blocks.create_index([("user_id", 1), ("year", -1), ("month", -1)])
     await db.email_rate_log.create_index("ts", expireAfterSeconds=60 * 60 * 24 * 2)
     await db.email_rate_log.create_index([("user_id", 1), ("action", 1), ("ts", -1)])
+    await db.email_downloads.create_index("expires_at", expireAfterSeconds=0)
+    await db.email_downloads.create_index("token", unique=True)
 
 
 @app.on_event("shutdown")
