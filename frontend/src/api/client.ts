@@ -124,6 +124,13 @@ export const api = {
     }),
   resendEmail: (id: string) =>
     request(`/blocks/${id}/resend-email`, { method: "POST" }),
+  reportHtmlUrl: async (id: string) => {
+    const token = await getToken();
+    return {
+      uri: `${process.env.EXPO_PUBLIC_BACKEND_URL}/api/blocks/${id}/report-html`,
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    };
+  },
   exportYear: (year: number) =>
     request<{ filename: string; mime: string; data: string }>(
       `/export/year/${year}`

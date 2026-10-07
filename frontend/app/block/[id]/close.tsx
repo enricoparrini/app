@@ -14,7 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, Camera, Image as ImageIcon, Paperclip, Send, X } from "lucide-react-native";
+import { ChevronLeft, Camera, Eye, Image as ImageIcon, Paperclip, Send, X } from "lucide-react-native";
 import { api } from "@/src/api/client";
 import { colors } from "@/src/theme";
 import { formatMoney, todayIso } from "@/src/utils/format";
@@ -262,6 +262,14 @@ export default function CloseBlock() {
 
       <View style={[styles.footer, { paddingBottom: insets.bottom + 12 }]}>
         <Pressable
+          testID="preview-before-close"
+          onPress={() => router.push(`/block/${id}/preview`)}
+          style={styles.previewBtn}
+        >
+          <Eye color={colors.brandPrimary} size={16} />
+          <Text style={styles.previewBtnText}>Anteprima riepilogo</Text>
+        </Pressable>
+        <Pressable
           testID="confirm-close"
           onPress={confirmAndSend}
           disabled={saving}
@@ -380,6 +388,19 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   btnText: { color: colors.onBrandPrimary, fontSize: 15, fontWeight: "600" },
+  previewBtn: {
+    flexDirection: "row",
+    gap: 8,
+    paddingVertical: 10,
+    borderRadius: 14,
+    backgroundColor: colors.surfaceSecondary,
+    borderWidth: 1,
+    borderColor: colors.brandPrimary,
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 10,
+  },
+  previewBtnText: { color: colors.brandPrimary, fontSize: 14, fontWeight: "600" },
   err: { color: colors.error, marginTop: 8 },
   attachRow: { flexDirection: "row", gap: 8 },
   attachBtn: {

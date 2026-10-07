@@ -10,7 +10,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { ChevronLeft, Plus, Paperclip, Pencil, Trash2, Lock, Send } from "lucide-react-native";
+import { ChevronLeft, Eye, Plus, Paperclip, Pencil, Trash2, Lock, Send } from "lucide-react-native";
 import { api } from "@/src/api/client";
 import { useAuth } from "@/src/contexts/AuthContext";
 import { colors } from "@/src/theme";
@@ -97,7 +97,13 @@ export default function BlockDetail() {
         <Text style={styles.title} numberOfLines={1}>
           {b.label}
         </Text>
-        <View style={{ width: 26 }} />
+        <Pressable
+          testID="open-preview"
+          onPress={() => router.push(`/block/${id}/preview`)}
+          hitSlop={10}
+        >
+          <Eye color={colors.onSurface} size={22} />
+        </Pressable>
       </View>
 
       <FlatList
@@ -153,7 +159,17 @@ export default function BlockDetail() {
                 <Text style={styles.expDesc} numberOfLines={1}>
                   {item.description}
                 </Text>
-                {item.has_attachment && <Paperclip color={colors.muted} size={14} />}
+                {item.has_attachment && (
+                  <Pressable
+                    testID={`view-attach-${item.expense_id}`}
+                    onPress={() =>
+                      router.push(`/block/${id}/attachment?eid=${item.expense_id}`)
+                    }
+                    hitSlop={6}
+                  >
+                    <Paperclip color={colors.brandPrimary} size={14} />
+                  </Pressable>
+                )}
               </View>
               <Text style={styles.expMeta}>
                 {formatDateIt(item.date)} · {item.paid_by === "parent1" ? cfg.parent1_name : cfg.parent2_name}{" "}

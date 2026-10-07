@@ -537,6 +537,22 @@ async def get_block(block_id: str, user=Depends(get_current_user)):
     return {"block": out}
 
 
+@api.get("/blocks/{block_id}/report-html")
+async def get_report_html(block_id: str, user=Depends(get_current_user)):
+    """Anteprima HTML del report: ritorna il markup che viene zippato per l'email."""
+    cfg = await db.configs.find_one({"user_id": user["user_id"]}, {"_id": 0})
+    if not cfg:
+        raise HTTPException(status_code=400, detail="Configurazione mancante")
+    blk = await db.blocks.find_one(
+        {"user_id": user["user_id"], "block_id": block_id}, {"_id": 0}
+    )
+    if not blk:
+        raise HTTPException(status_code=404, detail="Blocco non trovato")
+    totals = _compute_totals(blk.get("expenses", []), cfg.get("default_pct_parent1", 50.0))
+    html = _build_report_html(cfg, blk, totals)
+    return Response(content=html, media_type="text/html; charset=utf-8")
+
+
 @api.get("/blocks/{block_id}/expenses/{expense_id}/attachment")
 async def get_attachment(block_id: str, expense_id: str, user=Depends(get_current_user)):
     blk = await db.blocks.find_one(

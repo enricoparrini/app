@@ -1,0 +1,52 @@
+{
+  "summary": "Backend-only verification of NEW endpoint GET /api/blocks/{id}/report-html (WebView preview feature). Created /app/backend/tests/test_report_html.py with 13 tests across 3 classes (Success, Errors, Security) — all 13 PASSED. Verified: (1) 200 with Content-Type 'text/html; charset=utf-8', structural tags <!DOCTYPE>/<style>/<h1>/<table>/<tbody>/</html>, block title 'Spese extra Ottobre', parent names 'Alessandra'/'Beatrice', expense rows (descriptions + formatted money € 120,50 and € 80,00), 'Allegato' column with 'Sì'/'No' flags (NOT base64 content). (2) 401 without token, 401 with invalid token, 404 on nonexistent block, 404 on cross-user access (user B → user A's block = isolation), 400 'Configurazione mancante' when user has no config. (3) Coherence: endpoint output equals _build_report_html() reference output (same function used for ZIP email) — after stripping Cloudflare-injected telemetry <script> (preview-env artifact, NOT backend code). (4) Security: PNG base64 of expense attachment NOT present in payload; 'attachment_data' key not leaked; empty block renders valid HTML with 'Nessuna spesa'. Full regression on all 5 backend test suites: 81 passed / 4 failed — the 4 failures are PRE-EXISTING and unrelated to the new feature (2× Resend proxy rejecting undeliverable 'sec1@quota.local' documented in iteration_6/7; 2× rate-limit 429 on test_close_email_fix.py because previous full-suite runs hit the close/resend rate limit of 10/hour per user with reused seed user_id).",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "/api/blocks/{id}/report-html",
+        "issue": "Preview environment (Cloudflare) injects a telemetry <script> block into text/html responses before </body>. The backend-generated HTML is byte-identical to _build_report_html() (confirmed after stripping the injected script). This does NOT affect WebView rendering nor the content shown to the user, but may surprise consumers that compare bytes. No action needed on backend; it's an edge artifact."
+      },
+      {
+        "endpoint": "/api/blocks/{id}/resend-email + /api/export/year/{year}/email",
+        "issue": "PRE-EXISTING (iteration_6/7): test_security_fixes rate-limit tests fail with 502 because Resend proxy rejects 'sec1@quota.local' as undeliverable, and test_close_email_fix 2 tests fail with 429 due to accumulated rate_log entries from re-running the suite (10/hour cap on 'close' action per user). Fix: patch tests to use parent1_email='delivered@resend.dev' and reset rate_log in setup. Unrelated to the new feature."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_report_html.py",
+    "/app/test_reports/pytest/report_html.xml",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "No fix required for /api/blocks/{id}/report-html — all 13 new tests pass and all 6 feature-under-test items from the review request are verified (content-type, HTML structure, parent names, title, isolation, no config, coherence with _build_report_html, no base64 leak).",
+    "Housekeeping (optional, pre-existing): patch test_security_fixes.py (parent1_email='delivered@resend.dev') and reset email_rate_log in test_close_email_fix.py setUp to prevent 429 cross-run pollution. Same recommendation as iteration_6/7."
+  ],
+  "critical_code_review_comments": [
+    "server.py:540-553 — get_report_html checks cfg BEFORE blk (good: 400 on missing config); user_id filter on find_one ensures per-user isolation returning 404 for cross-user access (correct — not 403, which would leak existence).",
+    "server.py:551 — _compute_totals is called with cfg.get('default_pct_parent1', 50.0) matching the same default used in get_block / list_blocks (consistent).",
+    "server.py:552-553 — Response(content=html, media_type='text/html; charset=utf-8') is correct: FastAPI will set Content-Type exactly. No JSON wrapper.",
+    "server.py:657-717 _build_report_html — uses html.escape() on all user inputs (parent names, descriptions, dates, bonifico note, label). Safe against stored-XSS inside WebView. The <style> block is static.",
+    "server.py:661-673 — attachment presence is rendered as 'Sì'/'No' only; attachment_data base64 is NEVER inlined into the HTML (verified by test). No sensitive data leak in preview payload.",
+    "No MongoDB _id leak: find_one({'user_id': ...}, {'_id': 0}) projection on both configs and blocks queries. Verified.",
+    "Shared logic between email ZIP and preview: _build_report_html is called from both _build_zip (line 728) and get_report_html (line 552) → single source of truth, no drift risk between what's shown in-app vs sent via email.",
+    "Note: the endpoint has no rate limit. It only serves HTML built from stored data (no outbound email/network), so this is acceptable, but a future hardening could add a lightweight per-user cap if abuse becomes a concern."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_report_html.py (new — 13 tests, 3 classes)"
+  ],
+  "success_rate": {
+    "backend": "100% on new report-html suite (13/13). 95% on full regression (81/85 passing; the 4 failures are pre-existing env issues in test_security_fixes.py and test_close_email_fix.py unrelated to this feature).",
+    "frontend": "not tested (backend-only request per review_request.testing_type)"
+  },
+  "seed_data_creation": "test_report_html.py seeds 3 users (user_report_html_A, _B, _NOCFG) with their session tokens and (for A and B) configs — all idempotent via delete_many+insert_one at module scope. Cleans users, user_sessions, configs, blocks, email_downloads, email_rate_log for these user_ids at teardown. Verified post-run: 0 docs remain across all collections.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "BASE_URL from frontend/.env EXPO_PUBLIC_BACKEND_URL. Run new suite serially: pytest tests/test_report_html.py -n 0 (xdist with 2 workers causes DuplicateKeyError on module-scope seed since both workers insert the same user email — all suites in this project should use -n 0). Preview environment (Cloudflare) injects a telemetry <script>...</script> before </body> on text/html responses — tests that compare raw bytes must strip injected scripts; the backend-generated HTML is byte-identical to _build_report_html(). All 6 review-request feature points verified (200+content-type, 404/401/isolation, 400 no-config, coherence w/ ZIP email HTML, no base64 attachment data in payload)."
+}
