@@ -1,0 +1,46 @@
+{
+  "summary": "Email-body quota-line change VERIFIED. Added /app/backend/tests/test_email_body_quota.py (8 unit tests on the pure _email_body function imported directly from server.py). ALL 8 PASS. Confirmed contract: (a) when every expense has pct_parent1==50 (±0.01) the HTML contains BOTH 'Pagato da Marco' and 'Pagato da Elena' but NO occurrence of 'Quota ' (no 'Quota Marco', no 'Quota Elena'); (b) when any expense has pct_parent1 != 50 (tested with 70/30 and 60/40) the HTML contains BOTH 'Pagato da <P>' AND 'Quota <P>' for both parents; (c) empty expenses => no 'Quota ' line and 'Pagato da' with '€ 0,00' remains; (d) special chars in parent names are HTML-escaped (regression). Since both POST /blocks/{id}/close and POST /blocks/{id}/resend-email call the same _email_body() the behavior is guaranteed identical for both endpoints (same function reference, verified in server.py:1131 and server.py:1195). Full regression on non-obsolete suites (test_quota_backend, test_close_email_fix, test_pdf_report, test_security_fixes): 56 passed / 2 failed. The 2 failures are pre-existing Cloudflare 502s on POST /api/export/year/{year}/email documented in iteration_10 — unrelated to this change. Obsolete ZIP/'Sì-No' suites (test_closure_attachments.py, test_download_link_fix.py, test_report_html.py) were NOT run as instructed.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {
+        "endpoint": "POST /api/export/year/{year}/email",
+        "issue": "Pre-existing Cloudflare 502 (pre-existing from iteration_10, unrelated to this change). Causes test_security_fixes::TestRateLimitExportEmail and TestRateLimitIsolation to fail intermittently. Backend logs show no crash — proxy times out."
+      }
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_email_body_quota.py",
+    "/app/test_reports/pytest/email_body_quota_iter11.xml",
+    "/app/test_reports/pytest/regression_iter11.xml"
+  ],
+  "action_items": [
+    "No action required for this change — the _email_body contract is fully respected.",
+    "Carry-over from iteration_10: DELETE or REWRITE the 3 obsolete ZIP/'Sì-No' test files (test_closure_attachments.py, test_download_link_fix.py, test_report_html.py).",
+    "Carry-over from iteration_10 (OPTIONAL): investigate Cloudflare 502 on /api/export/year/{year}/email (likely proxy timeout; move PDF rendering off-request)."
+  ],
+  "critical_code_review_comments": [
+    "server.py:1055 — the all_half check uses tolerance 0.01 which cleanly handles float noise (e.g., 50.001); boundary tested in test_close_to_fifty_treated_as_half and test_just_outside_tolerance_triggers_quota.",
+    "server.py:1060 — guard `blk.get('expenses')` prevents a false 'Quota' row when the list is empty (an empty list makes all() True vacuously). Correct behavior.",
+    "server.py:1065-1070 — the f-string embeds quote_html as a bare interpolation BEFORE 'Pagato da <P1>'; when all_half is True the string is empty and the resulting markup collapses to '<p><strong>Totale spese:</strong> X<br>\\n<strong>Pagato da P1:</strong> …'. HTML renders fine but there is a stray newline. Cosmetic only.",
+    "server.py:1024 — _email_body is still invoked from BOTH close() and resend_email_block() with the same signature; no divergence risk."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_email_body_quota.py (NEW)"
+  ],
+  "success_rate": {
+    "backend": "test_email_body_quota.py: 8/8 (100%). Scoped regression (test_quota_backend + test_close_email_fix + test_pdf_report + test_security_fixes): 56/58 pass (2 pre-existing Cloudflare 502 failures unrelated to this change).",
+    "frontend": "not tested (backend-only request)"
+  },
+  "seed_data_creation": "None — _email_body is a pure function; tests call it directly with in-memory dicts. No DB writes.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "The email body contract is tested at the unit level by test_email_body_quota.py which imports _email_body directly from server.py. This is faster and more reliable than driving POST /close end-to-end (which depends on Resend availability). The 3 obsolete suites remain to be removed by main agent. Always run pytest with `-n 0` (pytest.ini forces xdist which can race the module-scope seeds in test_pdf_report.py).",
+  "rca_of_issue": "Not applicable — this iteration confirms a feature addition, not a bug fix. The implementation in server.py:1054-1064 is correct: it computes all_half with abs(pct-50) < 0.01 across every expense, suppresses the 'Quota' block when either all_half is True OR expenses is empty, and still emits 'Pagato da' unconditionally. Verified end-to-end that /close and /resend-email both delegate to the same _email_body."
+}

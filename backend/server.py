@@ -1051,12 +1051,23 @@ def _email_body(cfg: Dict[str, Any], blk: Dict[str, Any], totals: Dict[str, Any]
             f'<p style="font-size:12px;color:#737A74">Il link è valido per '
             f'{DOWNLOAD_TTL_DAYS} giorni.</p>'
         )
+    # Mostra le quote solo se non tutte le spese sono 50/50
+    all_half = all(
+        abs(float(e.get("pct_parent1", 50)) - 50.0) < 0.01
+        for e in blk.get("expenses", [])
+    )
+    quote_html = ""
+    if not all_half and blk.get("expenses"):
+        quote_html = (
+            f"<strong>Quota {p1}:</strong> {_format_money(totals['quota_parent1'])}<br>"
+            f"<strong>Quota {p2}:</strong> {_format_money(totals['quota_parent2'])}<br>"
+        )
     return f"""<table role="presentation" width="100%"><tr><td style="padding:24px;font-family:Arial,sans-serif;background:#FDFBF7">
 <h2 style="color:#5B8266;margin:0 0 12px 0">{escape(blk['label'])}</h2>
 <p>Qui sotto il link per scaricare il PDF del riepilogo mensile (report + eventuali scontrini e ricevute).</p>
 <p><strong>Totale spese:</strong> {_format_money(totals['total'])}<br>
-<strong>Quota {p1}:</strong> {_format_money(totals['quota_parent1'])}<br>
-<strong>Quota {p2}:</strong> {_format_money(totals['quota_parent2'])}</p>
+{quote_html}<strong>Pagato da {p1}:</strong> {_format_money(totals['paid_parent1'])}<br>
+<strong>Pagato da {p2}:</strong> {_format_money(totals['paid_parent2'])}</p>
 <p>{saldo_text}</p>
 {bon_html}
 {download_html}
