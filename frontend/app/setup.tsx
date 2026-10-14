@@ -43,6 +43,8 @@ export default function Setup() {
         } else if (user?.name) {
           setParent1(user.name);
         }
+      } catch (e: any) {
+        setErr(e.message || "Errore di caricamento");
       } finally {
         setLoading(false);
       }

@@ -9,8 +9,8 @@ import React, {
 } from "react";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
-import { Platform } from "react-native";
-import { api, setToken } from "@/src/api/client";
+import { Alert, Platform } from "react-native";
+import { api, setOnUnauthorized, setToken } from "@/src/api/client";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -34,7 +34,9 @@ export function useAuth() {
   return useContext(AuthCtx);
 }
 
-const sentIds = new Set<string>();
+// session_id -> esito dello scambio (evita doppio invio dello stesso session_id)
+const pending = new Map<string, Promise<boolean>>();
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 function extractSessionId(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -47,16 +49,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(true);
   const linkCaptured = useRef<string | null>(null);
 
-  const exchange = useCallback(async (session_id: string) => {
-    if (sentIds.has(session_id)) return;
-    sentIds.add(session_id);
-    try {
-      const res = await api.authSession(session_id);
-      await setToken(res.session_token);
-      setUser(res.user);
-    } catch (e) {
-      console.log("auth exchange failed", e);
-    }
+  const initialUrlRef = useRef<string | null>(null);
+
+  const exchange = useCallback((session_id: string): Promise<boolean> => {
+    const existing = pending.get(session_id);
+    if (existing) return existing;
+    const p = (async () => {
+      try {
+        const res = await api.authSession(session_id);
+        await setToken(res.session_token);
+        setUser(res.user);
+        return true;
+      } catch (e) {
+        console.log("auth exchange failed", e);
+        return false;
+      }
+    })();
+    pending.set(session_id, p);
+    return p;
+  }, []);
+
+  useEffect(() => {
+    // qualsiasi 401 => torna al login (il gate in _layout gestisce la navigazione)
+    setOnUnauthorized(() => setUser(null));
+    return () => setOnUnauthorized(null);
   }, []);
 
   useEffect(() => {
@@ -69,10 +85,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       try {
         const initial = await Linking.getInitialURL();
+        initialUrlRef.current = initial;
         const sid = extractSessionId(initial);
-        if (sid) await exchange(sid);
-        const me = await api.me().catch(() => null);
-        if (me?.user) setUser(me.user);
+        const ok = sid ? await exchange(sid) : false;
+        if (ok && Platform.OS === "web") {
+          window.history.replaceState(window.history.state, "", window.location.pathname);
+        }
+        if (!ok) {
+          const me = await api.me().catch(() => null);
+          setUser((prev) => me?.user ?? prev);
+        }
       } finally {
         setLoading(false);
       }
@@ -92,15 +114,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       window.location.href = authUrl;
       return;
     }
+    // azzera URL catturati in precedenza: dopo un logout contengono session_id già usati
+    linkCaptured.current = null;
     const result = await WebBrowser.openAuthSessionAsync(authUrl, redirectUrl);
-    let url: string | null = null;
-    if (result.type === "success" && (result as any).url) {
-      url = (result as any).url;
+    let url: string | null =
+      result.type === "success" && (result as any).url ? (result as any).url : null;
+    // Android: Custom Tabs può restituire "dismiss" mentre il deep link arriva poco dopo
+    for (let i = 0; !url && i < 10; i++) {
+      if (linkCaptured.current) url = linkCaptured.current;
+      else await sleep(200);
     }
-    if (!url && linkCaptured.current) url = linkCaptured.current;
-    if (!url) url = await Linking.getInitialURL();
+    if (!url) {
+      const init = await Linking.getInitialURL();
+      if (init && init !== initialUrlRef.current) url = init;
+    }
     const sid = extractSessionId(url);
-    if (sid) await exchange(sid);
+    if (!sid) return; // annullato dall'utente
+    const ok = await exchange(sid);
+    if (!ok) {
+      Alert.alert("Accesso non riuscito", "Non è stato possibile completare l'accesso con Google. Riprova.");
+    }
   }, [exchange]);
 
   const signOut = useCallback(async () => {

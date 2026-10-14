@@ -1,0 +1,38 @@
+{
+  "summary": "Frontend-only verification of the auth-gate fixes on Expo web preview (390x844). ALL 6 review scenarios PASS. Web bundle now loads (ZoomImage.web.tsx platform split is effective) and no red screen. (1) No token -> /login shows 'Quota' + 'Accedi con Google' (testID google-signin-button, login-title), no infinite spinner. (2) Seeded TEST_user_fe_1 + session (quota_app.user_sessions, tz-aware expires_at +7d) + config and injected token into localStorage['quota_session_token'] -> home screen loads with 'Ciao Mario' and 'Spese extra Ottobre 26' (testID create-current-month visible). (3) Deleted the session server-side via pymongo, reload -> app correctly navigates back to /login (NOT stuck on 'Configurazione mancante'), localStorage token cleared. (4) Invalid random token in localStorage + URL hash #session_id=bogus_nope -> lands on /login and token is cleared (stale /auth/session 401 does NOT wipe a still-valid token, verified by code review: client.ts:83-90). (5) Seeded TEST_user_fe_2 without config -> home correctly shows 'Configurazione mancante' + 'Configura' button -> tapping 'Configura' routes to /setup where the form renders (setup-parent1/2/email/pct/day). Filling & saving (setup-save) persists and routes back to home with 'Ciao Luigi'. (6) Logout from /settings (testID 'logout') returns to /login with cleared token; re-injecting a fresh seeded session token for the same user brings the home back with the same config/greeting (data preserved). Protected real user user_de562635920a / enricoparrini@gmail.com was NOT modified: verified post-cleanup. Minor non-blocking console warnings: react-native 'shadow*' style props deprecated (use boxShadow) and 'expo-notifications' push-token listener not supported on web — not failures, informational only.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [],
+    "react_native_issues": [
+      {"component": "RN inline shadow* props", "issue": "Several components emit warning: '\"shadow*\" style props are deprecated. Use \"boxShadow\".' Non-blocking. Reference: likely FAB in app/index.tsx:479-483 (shadowColor/Opacity/Radius/Offset) and similar."},
+      {"component": "expo-notifications on web", "issue": "Warning: 'Listening to push token changes is not yet fully supported on web. Adding a listener will have no effect.' Expected on web preview, but consider gating addPushTokenListener behind Platform.OS !== 'web' to silence noise."}
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/seed_helper.py",
+    "/app/backend/tests/test_auth_flows.py",
+    "/app/test_reports/pytest/auth_flows_iter12.xml"
+  ],
+  "action_items": [
+    "Optional polish: migrate inline shadow* RN styles to boxShadow (RN >= 0.76) to remove deprecation warnings.",
+    "Optional polish: in /app/frontend/src/notifications/* skip addPushTokenListener on Platform.OS === 'web'.",
+    "No functional action required — all auth-gate scenarios from the review work as intended on web preview."
+  ],
+  "critical_code_review_comments": [
+    "ZoomImage platform split (/app/frontend/src/components/ZoomImage.web.tsx) correctly unblocks the Metro web bundle previously broken by react-native-image-viewing's missing .web variants. Good minimal fix.",
+    "client.ts:83-90 — the special-case 'if (path !== /auth/session) wipe token + onUnauthorized' is confirmed working: scenario 4 (bogus hash + bad token) still ends on /login because the subsequent /auth/me 401 triggers the wipe, while a legitimately valid token survives a parallel 401 from /auth/session.",
+    "AuthContext.tsx:72-76 + _layout.tsx:27-32 — setOnUnauthorized → setUser(null) is wired to the gate's redirect; scenario 3 (session deleted) confirms the fix for the user-reported 'stuck on Configurazione mancante' bug: the gate now wins before the home screen falls through to the cfg-missing branch.",
+    "index.tsx:87-96 — the 'Configurazione mancante / Configura' branch now only triggers for authenticated users whose /config returns null (not for 401s, which go through the error branch at line 74-85). Verified visually in scenario 5."
+  ],
+  "updated_files": [
+    "/app/backend/tests/seed_helper.py (NEW — pymongo helper to seed/cleanup TEST_ users, sessions, configs; also used in iteration 12 test_auth_flows.py pattern)"
+  ],
+  "success_rate": {"backend": "N/A (not retested; iteration 12 was 11/11)", "frontend": "6/6 scenarios PASS"},
+  "seed_data_creation": "pymongo-seeded 2 TEST_ users (TEST_user_fe_1 with config, TEST_user_fe_2 without config) plus multiple TEST_ session tokens across scenarios. Final cleanup verified: users=2 deleted, user_sessions=3 deleted, configs=2 deleted, blocks=0. Protected user user_de562635920a / enricoparrini@gmail.com confirmed intact after cleanup.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Use /app/backend/tests/seed_helper.py for Mongo seeding (CLI: `python seed_helper.py seed <user_id> <token> <email> <name> withcfg|nocfg`, `delsession <token>`, `cleanup`). For web auth-flow tests, inject token BEFORE a full-URL change: e.g. goto /login, localStorage.setItem('quota_session_token', ...), then goto('/') with wait_until='networkidle'. If you goto the same URL twice back-to-back the second navigation is skipped and AuthProvider never re-reads the token. Known deprecation warnings (shadow* and expo-notifications web listener) are non-blocking.",
+  "rca_of_issue": "Iteration 12 identified the double-root cause (missing onUnauthorized notification + /auth/session 401 wiping valid tokens) and the frontend fix was committed to AuthContext.tsx (72-76) and client.ts (83-90). Iteration 13 (this run) end-to-end confirms the fix on the real Expo web preview: scenario 3 (stale session) and scenario 4 (bogus hash) both land on /login with the token cleared; scenario 2 and 6 confirm the happy path and token-reinjection; scenario 5 confirms the no-config path is still reachable and recoverable. No regressions observed."
+}

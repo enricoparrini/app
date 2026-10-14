@@ -1,3 +1,4 @@
+import asyncio
 import os
 import re
 import uuid
@@ -334,6 +335,7 @@ async def auth_session(payload: SessionIn):
                 headers={"X-Session-ID": payload.session_id},
             )
         if r.status_code != 200:
+            logger.warning(f"session exchange rejected: {r.status_code} {r.text[:200]}")
             raise HTTPException(status_code=401, detail="session_id non valido")
         data = r.json()
     except HTTPException:
@@ -364,13 +366,17 @@ async def auth_session(payload: SessionIn):
             }
         )
 
-    await db.user_sessions.insert_one(
+    # upsert: Emergent può restituire lo stesso session_token a login ripetuti
+    await db.user_sessions.update_one(
+        {"session_token": session_token},
         {
-            "session_token": session_token,
-            "user_id": user_id,
-            "created_at": datetime.now(timezone.utc),
-            "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
-        }
+            "$set": {
+                "user_id": user_id,
+                "created_at": datetime.now(timezone.utc),
+                "expires_at": datetime.now(timezone.utc) + timedelta(days=7),
+            }
+        },
+        upsert=True,
     )
     return {
         "session_token": session_token,
@@ -1416,14 +1422,15 @@ async def email_year_pdf(
         f'Inviato da {escape(EMAIL_FROM_NAME)}. Non chiederemo mai password o dati di pagamento via email.</p>'
         f'</td></tr></table>'
     )
-    email_res = await send_email(
-        to_list=[cfg["parent1_email"]],
-        subject=subject,
-        html=html,
-    )
-    if not email_res["ok"]:
-        raise HTTPException(status_code=502, detail=email_res["error"] or "Invio email fallito")
-    return {"ok": True}
+
+    async def _send_bg():
+        res = await send_email(to_list=[cfg["parent1_email"]], subject=subject, html=html)
+        if not res["ok"]:
+            logger.error(f"year email {year} failed: {res['error']}")
+
+    # invio in background: evita timeout 502 del gateway su PDF pesanti
+    asyncio.create_task(_send_bg())
+    return {"ok": True, "queued": True}
 
 
 @app.on_event("startup")

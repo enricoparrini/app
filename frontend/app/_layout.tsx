@@ -19,6 +19,11 @@ function AuthGate() {
   const router = useRouter();
   const segments = useSegments();
 
+  // cambio utente / logout: svuota la cache per non mostrare dati o errori vecchi
+  useEffect(() => {
+    queryClient.clear();
+  }, [user?.user_id]);
+
   useEffect(() => {
     if (loading) return;
     const inAuth = segments[0] === "login";

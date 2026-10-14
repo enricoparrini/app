@@ -1,0 +1,54 @@
+{
+  "summary": "Backend auth-flow verification: 11/11 PASS in /app/backend/tests/test_auth_flows.py. All contract items from the review request are confirmed on the backend: (a) POST /api/auth/session with an invalid session_id returns 401 (never 500) and does not raise; (b) GET /api/auth/me without or with an invalid Bearer returns 401; (c) a seeded TEST_ user + session (collections users / user_sessions with tz-aware expires_at +7d, as per playbook) authenticates /auth/me 200, /api/config returns the configured record 200; (d) POST /api/auth/logout removes ONLY the matching user_sessions document — users and configs are preserved; (e) POST /api/export/year/{year}/email now responds 200 with {ok:true, queued:true} in <1s (no 502). The protected real user (user_de562635920a / enricoparrini@gmail.com) was NOT touched during setup or teardown — explicitly verified post-cleanup. FRONTEND TESTING COULD NOT BE EXECUTED: Metro web bundling is broken, so every scenario in the review (login screen render, token injection, invalid-token redirect, stale deep-link, settings logout) renders a blank page. Expo logs show 'Unable to resolve ./components/ImageItem/ImageItem from node_modules/react-native-image-viewing/dist/ImageViewing.js' — the package only ships .ios.js and .android.js variants of ImageItem (no .web.js), so bundling for web crashes with 500 and 'MIME type application/json is not executable' before AuthContext/AuthGate mounts. The entry file app/block/[id]/attachment.tsx is the sole importer. This blocks ALL browser-based verification of the auth gate fixes.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "web preview boot (any screen)",
+        "issue": "Metro web bundler crashes with HTTP 500 at expo-router/entry.bundle because node_modules/react-native-image-viewing/dist/components/ImageItem/ has only ImageItem.ios.js and ImageItem.android.js (no .web.js). Browser receives JSON instead of JS -> 'Refused to execute script ... MIME type application/json'. Blank white page on 390x844. Blocks EVERY auth-flow test in this iteration (login render, token inject, 401 redirect, stale #session_id, logout from settings).",
+        "affected_testIDs": ["google-signin-button", "create-current-month", "open-settings", "setup-save"]
+      }
+    ],
+    "design_issues": [],
+    "react_native_issues": [
+      {
+        "component": "react-native-image-viewing @ app/block/[id]/attachment.tsx",
+        "issue": "Library has no web build (ImageItem ships only .ios/.android). Breaks the entire Expo web preview. Reference: /app/frontend/app/block/[id]/attachment.tsx (imports 'react-native-image-viewing'). Fix options: (1) dynamically require it only when Platform.OS !== 'web', or (2) replace with a web-compatible viewer (e.g. a Modal + Image / rn-swiper on web), or (3) add a Platform.select so the attachment viewer renders a plain <Image> on web."
+      }
+    ]
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_auth_flows.py",
+    "/app/test_reports/pytest/auth_flows_iter12.xml"
+  ],
+  "action_items": [
+    "URGENT: Fix the Metro web bundling break in /app/frontend/app/block/[id]/attachment.tsx by guarding `react-native-image-viewing` behind Platform.OS !== 'web' (lazy require) or replacing it with a web-safe fallback. Until this is fixed the entire Expo web preview is unusable and the auth-redirect UX fixes cannot be visually verified.",
+    "After the web bundling is fixed, re-run the frontend tests described in the review: (1) no-token -> login screen with testID google-signin-button; (2) inject valid seeded token into localStorage['quota_session_token'] -> home or /setup; (3) delete session in Mongo then reload -> redirect to /login (NOT stuck on 'Configurazione mancante'); (4) invalid token + stale #session_id=bogus -> login; (5) logout from /settings -> back to login; (6) re-inject token -> data still present.",
+    "Backend contract fully satisfied — no backend action required for this iteration."
+  ],
+  "critical_code_review_comments": [
+    "server.py:329-384 /auth/session — exceptions from the Emergent proxy are collapsed to 401 (correct, no 500 leak). upsert on user_sessions (line 370) correctly handles repeat logins returning the same session_token.",
+    "server.py:311-326 get_current_user — tz-aware comparison with naive-safe coercion is correct. Expired sessions return 401.",
+    "server.py:1425-1433 email_year_pdf — asyncio.create_task(_send_bg()) returns {ok, queued} immediately, verified <25s; PDF build still happens on the request thread (CPU-bound, could be moved to a worker but acceptable for current size).",
+    "frontend/src/api/client.ts:83-90 — the guard 'if (path !== /auth/session) await setToken(null); onUnauthorized?.()' is correct: a stale session_id from a deep link cannot wipe a still-valid stored token, and every other 401 now both clears the token AND notifies the gate (which flips user to null and redirects).",
+    "frontend/src/contexts/AuthContext.tsx:72-76 — setOnUnauthorized(() => setUser(null)) is registered on mount and cleared on unmount; combined with the gate in _layout.tsx this guarantees a return to /login after any 401 beyond /auth/session.",
+    "frontend/app/_layout.tsx:23-25 — queryClient.clear() on user?.user_id change prevents the stale '/config' cache from re-rendering 'Configurazione mancante' between users.",
+    "frontend/app/index.tsx:74-85 — cfgQuery.isError branch now shows a 'Riprova' button instead of silently falling through to 'Configurazione mancante'. Good UX fix."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_auth_flows.py (NEW — 11 tests covering /auth/session, /auth/me, /config, /auth/logout and /export/year/*/email contract)"
+  ],
+  "success_rate": {
+    "backend": "11/11 (100%) on test_auth_flows.py",
+    "frontend": "0% — web bundler is broken (react-native-image-viewing has no .web variant); no UI test could run"
+  },
+  "seed_data_creation": "One TEST_user_* with matching user_sessions and configs documents was seeded via pymongo for the module fixture; a second disposable TEST_tmp_* session was seeded inside the logout test. All removed in teardown. Final sweep: db.users / user_sessions / configs / blocks with user_id or session_token matching ^TEST_ -> all deleted. Protected real user (user_de562635920a / enricoparrini@gmail.com) and its config verified intact after cleanup.",
+  "retest_needed": true,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "Backend auth-flow contract is fully covered by /app/backend/tests/test_auth_flows.py — rerun with `python -m pytest backend/tests/test_auth_flows.py -n 0` (pytest.ini forces xdist). Use env MONGO_URL/DB_NAME/EXPO_PUBLIC_BACKEND_URL. The frontend web preview is BLOCKED on a bundler error unrelated to the auth fix — do NOT attempt UI testing until main agent fixes the react-native-image-viewing web import in app/block/[id]/attachment.tsx. Once fixed, use playwright with viewport 390x844, inject the test token via `localStorage.setItem('quota_session_token', ...)`, and look for testIDs: google-signin-button, create-current-month, open-settings, setup-save. Deep link testing: load `/#session_id=bogus_nope` — AuthContext.extractSessionId reads session_id from the hash, exchange() swallows the 401, and the gate should land on /login because client.ts skips token clearing only for /auth/session but the final /auth/me still 401s and triggers the redirect.",
+  "rca_of_issue": "Original user-reported bug ('after logout + re-login, app stuck on loading then stuck on Configurazione mancante'): root cause was two separate issues in /app/frontend/src/api/client.ts and AuthContext.tsx. (1) A 401 from any endpoint (including the first /auth/me after mounting with a stale/invalid token) used to wipe the token but did NOT notify AuthContext — user state stayed truthy, the gate did not redirect, and the home screen hit /config which 401'd again, falling through to the 'Configurazione mancante' branch because cfg === undefined. (2) A stale `#session_id=` in the URL after re-login triggered /auth/session, which (correctly) returned 401 and in the old code also cleared the just-stored valid token. The committed fix in client.ts:83-90 + AuthContext.tsx:72-76 addresses both: /auth/session 401 no longer touches storage, and every other 401 both clears storage AND invokes onUnauthorized -> setUser(null) -> gate redirects to /login. BACKEND verified end-to-end. FRONTEND behavioural verification is pending because the web bundler is broken — see action items."
+}

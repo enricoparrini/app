@@ -71,6 +71,19 @@ export default function Home() {
     );
   }
 
+  if (cfgQuery.isError) {
+    return (
+      <View style={[styles.loader, { paddingTop: insets.top }]}>
+        <Text style={{ color: colors.muted, marginBottom: 12 }}>
+          Impossibile caricare i dati. Controlla la connessione.
+        </Text>
+        <Pressable testID="retry-config" onPress={() => cfgQuery.refetch()} style={styles.primaryBtn}>
+          <Text style={styles.primaryBtnText}>Riprova</Text>
+        </Pressable>
+      </View>
+    );
+  }
+
   if (!cfg) {
     return (
       <View style={[styles.loader, { paddingTop: insets.top }]}>

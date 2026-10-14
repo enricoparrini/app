@@ -47,6 +47,11 @@ export async function getToken(): Promise<string | null> {
   return t;
 }
 
+let onUnauthorized: (() => void) | null = null;
+export function setOnUnauthorized(cb: (() => void) | null) {
+  onUnauthorized = cb;
+}
+
 export async function setToken(token: string | null) {
   memToken = token;
   await writeStored(token);
@@ -62,9 +67,25 @@ async function request<T = any>(
     ...((init.headers as Record<string, string>) || {}),
   };
   if (token) headers["Authorization"] = `Bearer ${token}`;
-  const res = await fetch(`${BASE}/api${path}`, { ...init, headers });
+  const isAuth = path.startsWith("/auth/");
+  const ctrl = isAuth ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), 20000) : null;
+  let res: Response;
+  try {
+    res = await fetch(`${BASE}/api${path}`, {
+      ...init,
+      headers,
+      ...(ctrl ? { signal: ctrl.signal } : {}),
+    });
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
   if (res.status === 401) {
-    await setToken(null);
+    // un session_id scaduto non deve cancellare una sessione valida già salvata
+    if (path !== "/auth/session") {
+      await setToken(null);
+      onUnauthorized?.();
+    }
     throw new Error("Non autorizzato");
   }
   if (!res.ok) {

@@ -27,3 +27,8 @@ Backend: 19/19 test automatici superati (auth, config, blocchi, spese, totali, c
 
 ## Note deployment
 Notifiche locali e selezione allegati PDF funzionano al 100% nel build nativo APK. Deploy tramite pulsante "Publish".
+
+## Oct 2026 – Auth fix
+- Fix login loop after logout: 401 from /auth/session no longer wipes valid token; any other 401 resets auth state -> login screen (no more "Configurazione mancante" stuck).
+- Auth fetch timeout 20s, stale deep-link URLs ignored, session upsert, query cache cleared on user change, "Riprova" on config load error.
+- Year export email sent in background (no 502). Removed 3 obsolete tests. Web fallback for zoom image.

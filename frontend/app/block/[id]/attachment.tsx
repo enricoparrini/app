@@ -1,5 +1,5 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import ImageView from "react-native-image-viewing";
+import ZoomImage from "@/src/components/ZoomImage";
 import * as FileSystem from "expo-file-system/legacy";
 import * as Sharing from "expo-sharing";
 import { ChevronLeft, Share2, FileText } from "lucide-react-native";
@@ -41,13 +41,7 @@ export default function AttachmentView() {
   const isImage = !!mime && mime.startsWith("image/");
   const isPdf = mime === "application/pdf";
 
-  const images = useMemo(
-    () =>
-      isImage && data
-        ? [{ uri: `data:${mime};base64,${data}` }]
-        : [],
-    [isImage, data, mime]
-  );
+  const imageUri = isImage && data ? `data:${mime};base64,${data}` : "";
 
   const sharePdf = async () => {
     if (!data || !mime) return;
@@ -99,15 +93,7 @@ export default function AttachmentView() {
           <ActivityIndicator color={colors.brandPrimary} />
         </View>
       ) : isImage ? (
-        <ImageView
-          images={images}
-          imageIndex={0}
-          visible
-          onRequestClose={() => router.back()}
-          swipeToCloseEnabled={false}
-          doubleTapToZoomEnabled
-          presentationStyle="overFullScreen"
-        />
+        <ZoomImage uri={imageUri} onClose={() => router.back()} />
       ) : isPdf ? (
         <View style={styles.pdfBox}>
           <View style={styles.pdfIcon}>
